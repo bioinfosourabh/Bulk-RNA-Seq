@@ -1,5 +1,6 @@
-# Bulk-RNA-Seq: A Step-by-Step Workflow (DESeq2 + xCell + Pathway Enrichment)
-A modular bulk RNA-seq differential expression pipeline using DESeq2 in R. This repository demonstrates a complete workflow from raw GEO data to pathway-level biological interpretation, using the breast cancer neoadjuvant response dataset GSE192341.
+# Bulk-RNA-Seq: A Step-by-Step Workflow (DESeq2 + xCell + Pathway Enrichment + Elite Visualizations)
+
+A modular bulk RNA-seq differential expression pipeline using DESeq2 in R. This repository demonstrates a complete workflow from raw GEO data to pathway-level biological interpretation with publication-grade visualizations, using the breast cancer neoadjuvant response dataset GSE192341.
 
 ## Purpose of This Repository
 This repository provides a reproducible pipeline for bulk RNA-seq analysis covering:
@@ -10,6 +11,7 @@ This repository provides a reproducible pipeline for bulk RNA-seq analysis cover
 5. Quality Control: Variance-stabilizing transformation, PCA, sample distance matrices, and outlier detection
 6. Cell-Type Deconvolution: Estimating immune and stromal cell enrichment scores using xCell
 7. Pathway Enrichment: Over-representation analysis (ORA) and gene set enrichment analysis (GSEA) with Hallmark, GO, and Reactome gene sets
+8. **Elite Visualizations**: Publication-quality figures with gene symbols, Nature/Cell/Science-grade aesthetics
 
 ## Dataset
 - **GEO Accession:** [GSE192341](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE192341)
@@ -30,15 +32,19 @@ Bulk-RNA-Seq/
 │   ├── 02_deseq2_analysis.R
 │   ├── 03_qc_vst_pca_distances.R
 │   ├── 04_deconvolution_xcell.R
-│   └── 05_enrichment_ORA_GSEA.R
+│   ├── 05_enrichment_ORA_GSEA.R
+│   └── 07_visualizations.R
 ├── data/
 │   └── coldata.tsv
 ├── data_raw/                 # Large files — not tracked
 │   └── GSE192341_processed_data.txt
-└── results/                  # Output files — not tracked
-    ├── tables/
-    ├── figures/
-    └── rds/
+├── results/                  # Output files — not tracked
+│   ├── tables/
+│   ├── figures/
+│   │   ├── png/
+│   │   └── pdf/
+│   └── rds/
+└── Visualizations/           # Published figures
 ```
 
 ## Installation & Setup
@@ -61,17 +67,19 @@ BiocManager::install(c(
 ))
 
 # CRAN packages
-install.packages(c("tidyverse", "data.table", "pheatmap", "RColorBrewer", "ggrepel", "msigdbr"))
+install.packages(c("tidyverse", "data.table", "pheatmap", "RColorBrewer", 
+                   "ggrepel", "msigdbr", "scales", "patchwork", "viridis", "hexbin"))
 
 # xCell from GitHub
 devtools::install_github("dviraran/xCell")
 ```
 
 ## 00A. Constructing Count Matrix from GEO Processed Data
-Purpose:
+
+**Purpose:**
 GEO processed files often contain gene annotations interleaved with expression values. This step parses the raw GEO matrix to generate a clean gene × sample integer count matrix and a separate gene annotation table for downstream identifier mapping (ENSEMBL → SYMBOL → ENTREZID).
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(data.table)
@@ -110,10 +118,11 @@ saveRDS(count_matrix, "results/rds/counts_raw.rds")
 ```
 
 ## 00B. Building Sample Metadata (colData) from GEO
-Purpose:
+
+**Purpose:**
 DESeq2 requires a sample metadata data.frame where row names match the count matrix column names exactly. This step queries GEO using GEOquery to extract clinical covariates and constructs the experimental design factor (pCR vs No pCR).
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(GEOquery)
@@ -157,10 +166,11 @@ saveRDS(coldata, "results/rds/coldata.rds")
 ```
 
 ## 01. Input Validation and Low-Count Gene Filtering
-Purpose:
+
+**Purpose:**
 Sample mismatch between count matrix and colData is the most common source of erroneous results in RNA-seq analysis. This step validates sample alignment, computes per-sample QC metrics (library size, detected genes), and applies low-count gene filtering to remove features with insufficient reads for reliable dispersion estimation.
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(tidyverse)
@@ -225,10 +235,11 @@ saveRDS(coldata, "results/rds/coldata_validated.rds")
 ```
 
 ## 02. Differential Expression Analysis with DESeq2
-Purpose:
+
+**Purpose:**
 DESeq2 models RNA-seq count data using a negative binomial generalized linear model (GLM), accounting for library size differences via size factor normalization and biological variability via gene-wise dispersion estimates. The apeglm shrinkage estimator applies an adaptive heavy-tailed Cauchy prior to log2 fold changes, reducing noise in low-count genes while preserving large effect sizes.
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(DESeq2)
@@ -299,10 +310,11 @@ write.csv(vst_matrix, "results/tables/vst_matrix.csv")
 ```
 
 ## 03. Quality Control: VST, PCA, and Sample Distance Analysis
-Purpose:
+
+**Purpose:**
 Variance-stabilizing transformation (VST) removes the mean-variance dependence inherent in count data, enabling meaningful Euclidean distance calculations and PCA. Principal component analysis reveals the major axes of transcriptomic variation and whether samples cluster by experimental condition or confounding variables. Distance-based outlier detection identifies samples with aberrant global expression profiles.
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(DESeq2)
@@ -363,10 +375,11 @@ saveRDS(vsd, "results/rds/vsd.rds")
 ```
 
 ## 04. Cell-Type Deconvolution with xCell
-Purpose:
+
+**Purpose:**
 Bulk RNA-seq represents a mixture of cell populations. xCell is a gene signature-based method that estimates enrichment scores for 64 immune and stromal cell types from bulk expression profiles. Comparing deconvolution scores between pCR and No pCR groups can reveal tumor microenvironment features associated with treatment response.
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(xCell)
@@ -435,10 +448,11 @@ saveRDS(xcell_scores, "results/rds/xcell_scores.rds")
 ```
 
 ## 05. Pathway Enrichment Analysis (ORA and GSEA)
-Purpose:
+
+**Purpose:**
 Over-representation analysis (ORA) tests whether differentially expressed genes are enriched in predefined gene sets using a hypergeometric test. Gene set enrichment analysis (GSEA) uses the full ranked gene list to detect coordinated expression changes without requiring an arbitrary significance cutoff. We apply both methods to Hallmark (MSigDB), Gene Ontology Biological Process, and Reactome pathway collections.
 
-Code:
+**Code:**
 ```r
 ### Step 1: Load Libraries
 library(clusterProfiler)
@@ -599,11 +613,260 @@ saveRDS(list(
 ), "results/rds/enrichment_results.rds")
 ```
 
+## 06. Elite Publication-Grade Visualizations
+
+**Purpose:**
+Generate Nature/Cell/Science-quality figures with gene symbols, professional color palettes, and comprehensive interpretive plots. All visualizations use colorblind-friendly palettes and follow publication standards.
+
+**Setup & Libraries:**
+```r
+# Additional packages for elite visualizations
+install.packages(c("scales", "patchwork", "viridis", "hexbin"))
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(DESeq2)
+  library(pheatmap)
+  library(RColorBrewer)
+  library(ggrepel)
+  library(scales)
+  library(patchwork)
+  library(viridis)
+  library(AnnotationDbi)
+  library(org.Hs.eg.db)
+  library(hexbin)
+})
+```
+
+### Figure 1: Sample Quality Control Metrics
+
+Comprehensive QC showing library size distribution, detected genes, and library complexity across treatment groups.
+
+![Sample QC Metrics](Visualizations/Fig01_Sample_QC.png)
+
+**Key Features:**
+- Library size density plots with rug marks
+- Boxplots with individual sample points
+- Violin plots showing gene detection
+- Library complexity scatter with correlation coefficient
+
+---
+
+### Figure 2: Principal Component Analysis
+
+Multi-panel PCA analysis revealing transcriptomic variance structure and sample clustering patterns.
+
+![PCA Analysis](Visualizations/Fig02_PCA.png)
+
+**Panels:**
+- PC1 vs PC2 with 95% confidence ellipses
+- PC2 vs PC3 alternative view
+- Scree plot with cumulative variance
+- PC1 score distribution by treatment group
+
+---
+
+### Figure 3: Sample Clustering Heatmaps
+
+Hierarchical clustering based on sample-to-sample distances and correlations.
+
+#### 3A: Euclidean Distance Matrix
+![Sample Distance Heatmap](Visualizations/Fig03A_Sample_Distance.png)
+
+#### 3B: Pearson Correlation Matrix
+![Sample Correlation Heatmap](Visualizations/Fig03B_Sample_Correlation.png)
+
+**Features:**
+- Ward.D2 hierarchical clustering
+- Response group annotations
+- Diverging color schemes
+- Dendrogram visualization
+
+---
+
+### Figure 4: Volcano Plot
+
+Elite volcano plot with gene symbol labels for top differentially expressed genes.
+
+![Volcano Plot](Visualizations/Fig04_Volcano.png)
+
+**Highlights:**
+- Top 24 genes labeled with HGNC symbols
+- Colorblind-friendly regulation colors
+- Significance thresholds (padj < 0.05, |LFC| > 0.5)
+- Intelligent label positioning with ggrepel
+
+---
+
+### Figure 5: MA Plot
+
+Mean-average plot showing log2 fold change vs mean normalized expression.
+
+![MA Plot](Visualizations/Fig05_MA_Plot.png)
+
+**Features:**
+- Top 15 significant genes labeled
+- Fold-change threshold lines (±1 LFC)
+- Gene symbol annotations
+- Color-coded significance levels
+
+---
+
+### Figure 6: Differential Expression Statistics
+
+Four-panel statistical overview of DE results.
+
+![DE Statistics](Visualizations/Fig06_DE_Statistics.png)
+
+**Panels:**
+- P-value distribution histogram
+- Log2 fold change distribution
+- Effect size vs significance density plot
+- Top 500 genes ranked by adjusted p-value
+
+---
+
+### Figure 7: Top DE Genes Heatmap
+
+Z-score normalized expression heatmap of top 60 differentially expressed genes.
+
+![Top DE Genes Heatmap](Visualizations/Fig07_Top_DE_Heatmap.png)
+
+**Features:**
+- Gene symbols as row labels
+- Bi-directional clustering
+- Response and regulation direction annotations
+- Diverging blue-white-red color scheme
+
+---
+
+### Figure 8: Top Gene Expression Boxplots
+
+Individual expression profiles of the 12 most significant genes.
+
+![Top Gene Expression](Visualizations/Fig08_Top_Gene_Expression.png)
+
+**Features:**
+- Violin + boxplot + jitter combination
+- Gene symbols with LFC and p-value annotations
+- Normalized count scales
+- 4×3 grid layout
+
+---
+
+### Figure 9: xCell Deconvolution Analysis
+
+Comprehensive tumor microenvironment characterization.
+
+#### 9A: xCell Enrichment Heatmap
+![xCell Heatmap](Visualizations/Fig09A_xCell_Heatmap.png)
+
+Top 30 most variable cell type enrichment scores.
+
+#### 9B: Immune Cell Populations
+![Immune Cells](Visualizations/Fig09B_Immune_Cells.png)
+
+Key immune cell infiltration comparison between treatment groups.
+
+#### 9C: Differentially Enriched Cell Types
+![Significant Cell Types](Visualizations/Fig09C_Significant_CellTypes.png)
+
+Cell populations with significant differential enrichment (Wilcoxon test, padj < 0.25).
+
+#### 9D: Tumor Microenvironment Scores
+![TME Scores](Visualizations/Fig09D_TME_Scores.png)
+
+ImmuneScore, StromaScore, and MicroenvironmentScore by treatment response.
+
+---
+
+### Figure 10: Pathway Enrichment Analysis
+
+Multi-panel pathway enrichment visualization across gene set databases.
+
+#### 10A: Hallmark Pathways - Upregulated
+![Hallmark UP](Visualizations/Fig10A_Hallmark_UP.png)
+
+#### 10B: Hallmark Pathways - Downregulated
+![Hallmark DOWN](Visualizations/Fig10B_Hallmark_DOWN.png)
+
+#### 10C: GO Biological Process - Upregulated
+![GO BP UP](Visualizations/Fig10C_GO_BP_UP.png)
+
+#### 10D: GO Biological Process - Downregulated
+![GO BP DOWN](Visualizations/Fig10D_GO_BP_DOWN.png)
+
+#### 10E: GSEA Hallmark Pathways
+![GSEA Hallmark](Visualizations/Fig10E_GSEA_Hallmark.png)
+
+**Features:**
+- Dot plots with gene ratio scaling
+- Color intensity by adjusted p-value
+- Point size by gene count
+- Normalized enrichment scores (GSEA)
+
+---
+
+### Figure 11: Analysis Summary
+
+High-level overview of the complete analysis.
+
+![Analysis Summary](Visualizations/Fig11_Summary.png)
+
+**Panels:**
+- Sample distribution bar chart
+- DE gene categorization (strict and lenient LFC cutoffs)
+
+---
+
+### Supplementary Figures
+
+#### S1: Dispersion Estimates
+![Dispersion Plot](Visualizations/FigS1_Dispersion.png)
+
+DESeq2 gene-wise dispersion estimates showing fit quality.
+
+#### S2: Size Factors
+![Size Factors](Visualizations/FigS2_Size_Factors.png)
+
+Library size normalization factors by sample and treatment group.
+
+#### S3: Top Variable Genes
+![Top Variable Genes](Visualizations/FigS3_Top_Variable_Genes.png)
+
+Heatmap of top 100 most variable genes across all samples.
+
+---
+
+## Complete Visualization Code
+
+The complete visualization pipeline (`scripts/07_visualizations.R`) generates all figures with:
+
+- **Elite color palettes** (Nature/Cell/Science inspired)
+- **Publication theme** with proper fonts and spacing
+- **Gene symbol mapping** from ENSEMBL IDs
+- **High-resolution output** (300 DPI PNG + vector PDF)
+- **Comprehensive figure annotations**
+
+Key functions include:
+- `theme_publication()`: Base ggplot2 theme
+- `map_ensembl_to_symbol()`: Robust ID-to-symbol conversion
+- `make_elite_dotplot()`: Pathway enrichment visualization
+
+**Output structure:**
+```
+results/figures/
+├── png/          # 300 DPI raster images
+└── pdf/          # Vector graphics
+```
+
 ## Key Output Files
+
 | File | Description |
 |------|-------------|
 | `results/tables/DESeq2_results_all.tsv` | Complete differential expression results with shrunken LFC |
 | `results/tables/DESeq2_results_significant.tsv` | Genes with padj < 0.05 |
+| `results/tables/DESeq2_results_annotated.tsv` | DE results with gene symbols and ENTREZID |
 | `results/tables/normalized_counts.csv` | DESeq2 size factor-normalized counts |
 | `results/tables/vst_matrix.csv` | Variance-stabilized expression matrix |
 | `results/tables/qc_pca_coordinates.tsv` | Sample PCA coordinates |
@@ -612,15 +875,40 @@ saveRDS(list(
 | `results/tables/enrich_hallmark_*.tsv` | Hallmark pathway enrichment results |
 | `results/tables/enrich_GO_BP_*.tsv` | GO Biological Process enrichment |
 | `results/tables/enrich_reactome_*.tsv` | Reactome pathway enrichment |
+| `results/figures/png/*` | Publication-grade PNG figures (300 DPI) |
+| `results/figures/pdf/*` | Vector PDF figures |
+
+## Complete Pipeline Execution
+
+Run the entire analysis pipeline sequentially:
+```bash
+# Data preparation
+Rscript scripts/00A_make_counts_from_processed_matrix.R
+Rscript scripts/00B_make_coldata_from_GEO.R
+
+# Core analysis
+Rscript scripts/01_input_validation.R
+Rscript scripts/02_deseq2_analysis.R
+Rscript scripts/03_qc_vst_pca_distances.R
+Rscript scripts/04_deconvolution_xcell.R
+Rscript scripts/05_enrichment_ORA_GSEA.R
+
+# Elite visualizations
+Rscript scripts/07_visualizations.R
+```
 
 ## References
+
 - **DESeq2:** Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. *Genome Biology* 2014;15:550
 - **apeglm:** Zhu A, Ibrahim JG, Love MI. Heavy-tailed prior distributions for sequence count data: removing the noise and preserving large differences. *Bioinformatics* 2019;35:2084–2092
 - **xCell:** Aran D, Hu Z, Butte AJ. xCell: digitally portraying the tissue cellular heterogeneity landscape. *Genome Biology* 2017;18:220
 - **clusterProfiler:** Wu T et al. clusterProfiler 4.0: A universal enrichment tool for interpreting omics data. *The Innovation* 2021;2:100141
 - **MSigDB Hallmark:** Liberzon A et al. The Molecular Signatures Database Hallmark Gene Set Collection. *Cell Systems* 2015;1:417–425
 
-📬 Contact
-For questions or issues:
+## Contact
 
-Email: bioinfosourabh@gmail.com
+📬 For questions or issues:
+
+**Email:** bioinfosourabh@gmail.com
+
+**Website:** [bioinfosourabh.netlify.app](https://bioinfosourabh.netlify.app)
