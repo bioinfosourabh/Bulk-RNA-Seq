@@ -1,4 +1,4 @@
-# Bulk-RNA-Seq: A Step-by-Step Workflow (DESeq2 + xCell + Pathway Enrichment + Elite Visualizations)
+# Bulk-RNA-Seq: A Step-by-Step Workflow (DESeq2 + xCell + Pathway Enrichment + Visualizations)
 
 A modular bulk RNA-seq differential expression pipeline using DESeq2 in R. This repository demonstrates a complete workflow from raw GEO data to pathway-level biological interpretation with publication-grade visualizations, using the breast cancer neoadjuvant response dataset GSE192341.
 
