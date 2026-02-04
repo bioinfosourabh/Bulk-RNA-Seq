@@ -1,23 +1,25 @@
-# Bulk-RNA-Seq: A Step-by-Step Workflow (DESeq2 + xCell + Pathway Enrichment + Visualizations)
+# Bulk RNA-Seq Analysis Pipeline: DESeq2, xCell, and Pathway Enrichment
 
-A modular bulk RNA-seq differential expression pipeline using DESeq2 in R. This repository demonstrates a complete workflow from raw GEO data to pathway-level biological interpretation with publication-grade visualizations, using the breast cancer neoadjuvant response dataset GSE192341.
+A comprehensive bulk RNA-seq differential expression analysis pipeline implementing DESeq2 for statistical modeling, xCell for cellular deconvolution, and multiple pathway enrichment approaches. This workflow analyzes breast cancer neoadjuvant chemotherapy response data (GSE192341).
 
-## Purpose of This Repository
-This repository provides a reproducible pipeline for bulk RNA-seq analysis covering:
-1. Data Preparation: Parsing GEO processed matrices into DESeq2-compatible count matrices
-2. Metadata Construction: Building sample annotation (colData) from GEO clinical variables
-3. Input Validation: Ensuring sample alignment and applying low-count gene filtering
-4. Differential Expression: Negative binomial modeling with DESeq2 and apeglm log-fold change shrinkage
-5. Quality Control: Variance-stabilizing transformation, PCA, sample distance matrices, and outlier detection
-6. Cell-Type Deconvolution: Estimating immune and stromal cell enrichment scores using xCell
-7. Pathway Enrichment: Over-representation analysis (ORA) and gene set enrichment analysis (GSEA) with Hallmark, GO, and Reactome gene sets
-8. **Elite Visualizations**: Publication-quality figures with gene symbols, Nature/Cell/Science-grade aesthetics integrated throughout the workflow
+## Overview
+
+This repository provides a reproducible analysis pipeline covering:
+1. Data Preparation: Conversion of GEO processed matrices to DESeq2-compatible count matrices
+2. Metadata Construction: Sample annotation from GEO clinical variables
+3. Input Validation: Sample alignment verification and low-count gene filtering
+4. Differential Expression: Negative binomial modeling with DESeq2 and apeglm shrinkage
+5. Quality Control: Variance-stabilizing transformation, PCA, and distance-based outlier detection
+6. Cellular Deconvolution: xCell-based estimation of immune and stromal cell enrichment
+7. Pathway Enrichment: ORA and GSEA using Hallmark, GO, and Reactome databases
+8. Data Visualization: Comprehensive figure generation for all analysis steps
 
 ## Dataset
+
 - **GEO Accession:** [GSE192341](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE192341)
-- **Tissue:** Human breast tumor biopsies
-- **Contrast:** Pathological complete response (pCR) vs residual disease (No pCR) following neoadjuvant chemotherapy
-- **Samples:** 87 patients (pCR = 24, No pCR = 61, NA = 2)
+- **Tissue:** Human breast tumor biopsies (pre-treatment)
+- **Clinical Endpoint:** Pathological complete response (pCR) vs residual disease (No pCR) following neoadjuvant chemotherapy
+- **Sample Size:** 87 patients (pCR = 24, No pCR = 61, NA = 2)
 
 ## Repository Structure
 ```
@@ -36,21 +38,23 @@ Bulk-RNA-Seq/
 │   └── 07_visualizations.R
 ├── data/
 │   └── coldata.tsv
-├── data_raw/                 # Large files — not tracked
+├── data_raw/
 │   └── GSE192341_processed_data.txt
-├── results/                  # Output files — not tracked
+├── results/
 │   ├── tables/
 │   ├── figures/
 │   │   ├── png/
 │   │   └── pdf/
 │   └── rds/
-└── Visualizations/           # Published figures
+└── Visualizations/
 ```
 
-## Installation & Setup
-Install the required R packages:
+## Software Requirements
+
+### R Packages
+
+**Bioconductor packages:**
 ```r
-# Bioconductor packages
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
@@ -65,18 +69,22 @@ BiocManager::install(c(
     "DOSE",
     "enrichplot"
 ))
+```
 
-# CRAN packages
+**CRAN packages:**
+```r
 install.packages(c("tidyverse", "data.table", "pheatmap", "RColorBrewer", 
                    "ggrepel", "msigdbr", "scales", "patchwork", "viridis", "hexbin"))
+```
 
-# xCell from GitHub
+**GitHub packages:**
+```r
 devtools::install_github("dviraran/xCell")
 ```
 
-## Visualization Setup
+## Visualization Configuration
 
-For generating publication-grade figures, additional setup is required:
+The visualization system uses consistent color schemes and formatting across all figures:
 ```r
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -92,11 +100,15 @@ suppressPackageStartupMessages({
   library(hexbin)
 })
 
-# Elite color palettes (Nature/Cell/Science inspired)
+# Color palette for treatment groups
 pal_condition <- c("No pCR" = "#DC3220", "pCR" = "#005AB5")
-pal_regulation <- c("Upregulated" = "#C41E3A", "Downregulated" = "#1E5AA8", "Not Significant" = "#BEBEBE")
 
-# Publication theme
+# Color palette for differential expression
+pal_regulation <- c("Upregulated" = "#C41E3A", 
+                    "Downregulated" = "#1E5AA8", 
+                    "Not Significant" = "#BEBEBE")
+
+# Base theme for all plots
 theme_publication <- function(base_size = 11, base_family = "sans") {
   theme_minimal(base_size = base_size, base_family = base_family) %+replace%
     theme(
@@ -109,7 +121,6 @@ theme_publication <- function(base_size = 11, base_family = "sans") {
       axis.text = element_text(color = "black", size = base_size - 1),
       axis.title = element_text(color = "black", size = base_size, face = "bold"),
       legend.background = element_blank(),
-      legend.key = element_blank(),
       plot.title = element_text(face = "bold", size = base_size + 3, hjust = 0.5),
       plot.subtitle = element_text(size = base_size, hjust = 0.5, color = "#555555"),
       plot.margin = margin(15, 15, 10, 10),
@@ -145,64 +156,53 @@ map_ensembl_to_symbol <- function(ensembl_ids) {
 }
 ```
 
-## 00A. Constructing Count Matrix from GEO Processed Data
+## Analysis Workflow
 
-**Purpose:**
-GEO processed files often contain gene annotations interleaved with expression values. This step parses the raw GEO matrix to generate a clean gene × sample integer count matrix and a separate gene annotation table for downstream identifier mapping (ENSEMBL → SYMBOL → ENTREZID).
+### 00A. Count Matrix Construction
+
+**Objective:** Parse GEO processed data into a clean gene × sample count matrix suitable for DESeq2 input.
+
+**Input:** `data_raw/GSE192341_processed_data.txt`  
+**Output:** `data/counts.csv`, `data/gene_annotation.csv`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(data.table)
 library(tidyverse)
 
-### Step 2: Read GEO Processed Matrix
 raw_data <- fread("data_raw/GSE192341_processed_data.txt")
 
-### Step 3: Inspect Column Structure
-head(colnames(raw_data), 10)
-str(raw_data[, 1:5])
-
-### Step 4: Extract Gene Annotation
 gene_annotation <- raw_data %>%
   select(gene_id = 1, gene_symbol = 2) %>%
   distinct()
 
-### Step 5: Build Count Matrix
 sample_cols <- colnames(raw_data)[sapply(raw_data, is.numeric)]
 count_matrix <- as.matrix(raw_data[, ..sample_cols])
 rownames(count_matrix) <- raw_data[[1]]
 
-### Step 6: Verify Matrix Integrity
 stopifnot(all(count_matrix >= 0))
 cat("Dimensions:", nrow(count_matrix), "genes x", ncol(count_matrix), "samples\n")
 
-### Step 7: Export
 write.csv(count_matrix, "data/counts.csv", row.names = TRUE)
 write.csv(gene_annotation, "data/gene_annotation.csv", row.names = FALSE)
 saveRDS(count_matrix, "results/rds/counts_raw.rds")
 ```
 
-## 00B. Building Sample Metadata (colData) from GEO
+### 00B. Sample Metadata Construction
 
-**Purpose:**
-DESeq2 requires a sample metadata data.frame where row names match the count matrix column names exactly. This step queries GEO using GEOquery to extract clinical covariates and constructs the experimental design factor (pCR vs No pCR).
+**Objective:** Extract clinical metadata from GEO and create DESeq2-compatible sample annotation.
+
+**Input:** GEO series GSE192341  
+**Output:** `data/coldata.tsv`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(GEOquery)
 library(tidyverse)
 
-### Step 2: Download Series Matrix from GEO
 gse <- getGEO("GSE192341", GSEMatrix = TRUE, getGPL = FALSE)
 pdata <- pData(gse[[1]])
 
-### Step 3: Inspect Available Clinical Variables
-colnames(pdata)
-head(pdata[, grep("characteristics", colnames(pdata))])
-
-### Step 4: Extract Relevant Covariates
 coldata <- pdata %>%
   transmute(
     sample_id = geo_accession,
@@ -219,32 +219,31 @@ coldata <- pdata %>%
     )
   )
 
-### Step 5: Set Row Names to Match Count Matrix
 rownames(coldata) <- coldata$sample_id
 
-### Step 6: Verify Group Distribution
 table(coldata$condition, useNA = "ifany")
 
-### Step 7: Export
 write_tsv(coldata, "data/coldata.tsv")
 saveRDS(coldata, "results/rds/coldata.rds")
 ```
 
-## 01. Input Validation and Low-Count Gene Filtering
+### 01. Input Validation and Gene Filtering
 
-**Purpose:**
-Sample mismatch between count matrix and colData is the most common source of erroneous results in RNA-seq analysis. This step validates sample alignment, computes per-sample QC metrics (library size, detected genes), and applies low-count gene filtering to remove features with insufficient reads for reliable dispersion estimation.
+**Objective:** Verify sample-metadata alignment and apply count-based gene filtering.
+
+**Rationale:** Sample misalignment is a common source of spurious results. Low-count genes produce unreliable dispersion estimates and are removed following DESeq2 recommendations (≥10 counts in ≥3 samples).
+
+**Input:** `results/rds/counts_raw.rds`, `results/rds/coldata.rds`  
+**Output:** `results/rds/counts_filtered.rds`, `results/tables/sample_qc_metrics.tsv`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(tidyverse)
 
-### Step 2: Load Data
 counts <- readRDS("results/rds/counts_raw.rds")
 coldata <- readRDS("results/rds/coldata.rds")
 
-### Step 3: Validate Sample Alignment
+# Validate sample alignment
 count_samples <- colnames(counts)
 coldata_samples <- rownames(coldata)
 
@@ -258,21 +257,19 @@ if (length(in_coldata_not_counts) > 0) {
   warning("Samples in coldata but not counts: ", paste(in_coldata_not_counts, collapse = ", "))
 }
 
-### Step 4: Subset to Common Samples and Reorder
+# Subset to common samples
 common_samples <- intersect(count_samples, coldata_samples)
 counts <- counts[, common_samples]
 coldata <- coldata[common_samples, ]
 
 stopifnot(identical(colnames(counts), rownames(coldata)))
-cat("Sample alignment verified:", ncol(counts), "samples\n")
 
-### Step 5: Remove Samples with Missing Condition
+# Remove samples with missing condition
 valid_idx <- !is.na(coldata$condition)
 counts <- counts[, valid_idx]
 coldata <- coldata[valid_idx, ]
-cat("Samples after removing NA condition:", ncol(counts), "\n")
 
-### Step 6: Compute Per-Sample QC Metrics
+# Compute QC metrics
 sample_qc <- data.frame(
   sample_id = colnames(counts),
   library_size = colSums(counts),
@@ -280,7 +277,7 @@ sample_qc <- data.frame(
   condition = coldata$condition
 )
 
-### Step 7: Apply Low-Count Gene Filter
+# Gene filtering
 min_count <- 10
 min_samples <- 3
 keep_genes <- rowSums(counts >= min_count) >= min_samples
@@ -288,21 +285,19 @@ keep_genes <- rowSums(counts >= min_count) >= min_samples
 counts_filtered <- counts[keep_genes, ]
 cat("Genes before filtering:", nrow(counts), "\n")
 cat("Genes after filtering:", nrow(counts_filtered), "\n")
-cat("Genes removed:", nrow(counts) - nrow(counts_filtered), "\n")
 
-### Step 8: Export
 write_tsv(sample_qc, "results/tables/sample_qc_metrics.tsv")
 saveRDS(counts_filtered, "results/rds/counts_filtered.rds")
 saveRDS(coldata, "results/rds/coldata_validated.rds")
 ```
 
-### Visualization: Sample Quality Control Metrics
+#### Figure 1: Sample Quality Control Metrics
 
-Comprehensive QC showing library size distribution, detected genes, and library complexity across treatment groups.
+**Description:** Multi-panel visualization of library size, gene detection, and sequencing complexity metrics stratified by treatment response.
 
 ![Sample QC Metrics](Visualizations/Fig01_Sample_QC.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 library(ggplot2)
 library(patchwork)
@@ -310,7 +305,7 @@ library(patchwork)
 qc <- read.table("results/tables/sample_qc_metrics.tsv", header = TRUE, sep = "\t")
 qc$condition <- coldata[qc$sample, "condition"]
 
-# 1A: Library Size Distribution
+# Panel A: Library size distribution
 p1a <- ggplot(qc, aes(x = library_size / 1e6, fill = condition)) +
   geom_density(alpha = 0.6, color = NA) +
   geom_rug(aes(color = condition), alpha = 0.5) +
@@ -318,10 +313,9 @@ p1a <- ggplot(qc, aes(x = library_size / 1e6, fill = condition)) +
   scale_color_manual(values = pal_condition, guide = "none") +
   labs(title = "Library Size Distribution",
        x = "Library Size (millions of reads)", y = "Density") +
-  theme_publication() +
-  theme(legend.position = c(0.85, 0.85))
+  theme_publication()
 
-# 1B: Library Size Boxplot
+# Panel B: Library size by group
 p1b <- ggplot(qc, aes(x = condition, y = library_size / 1e6, fill = condition)) +
   geom_boxplot(alpha = 0.8, outlier.shape = NA, width = 0.5) +
   geom_jitter(width = 0.12, size = 1.8, alpha = 0.6, shape = 21, fill = "white") +
@@ -331,7 +325,7 @@ p1b <- ggplot(qc, aes(x = condition, y = library_size / 1e6, fill = condition)) 
   theme_publication() +
   theme(legend.position = "none")
 
-# 1C: Detected Genes Violin
+# Panel C: Detected genes distribution
 p1c <- ggplot(qc, aes(x = condition, y = detected_genes / 1000, fill = condition)) +
   geom_violin(alpha = 0.7, color = "black", trim = FALSE) +
   geom_boxplot(width = 0.12, fill = "white", outlier.shape = NA) +
@@ -341,7 +335,7 @@ p1c <- ggplot(qc, aes(x = condition, y = detected_genes / 1000, fill = condition
   theme_publication() +
   theme(legend.position = "none")
 
-# 1D: Library Complexity
+# Panel D: Library complexity
 cor_val <- cor(qc$library_size, qc$detected_genes)
 p1d <- ggplot(qc, aes(x = library_size / 1e6, y = detected_genes / 1000)) +
   geom_smooth(method = "lm", se = TRUE, color = "#333333", fill = "#CCCCCC") +
@@ -351,66 +345,63 @@ p1d <- ggplot(qc, aes(x = library_size / 1e6, y = detected_genes / 1000)) +
            label = paste0("r = ", round(cor_val, 3)), fontface = "italic") +
   labs(title = "Library Complexity", x = "Library Size (millions)", 
        y = "Detected Genes (thousands)") +
-  theme_publication() +
-  theme(legend.position = c(0.15, 0.85))
+  theme_publication()
 
-# Combine
 fig1 <- (p1a | p1b) / (p1c | p1d) +
   plot_annotation(
     title = "Sample Quality Control Metrics",
-    subtitle = "GSE192341 | Breast Cancer Neoadjuvant Chemotherapy Response"
+    subtitle = "GSE192341: Breast Cancer Neoadjuvant Chemotherapy Response"
   )
 
 ggsave("results/figures/png/Fig01_Sample_QC.png", fig1, width = 12, height = 11, dpi = 300)
 ```
 
-**Key Features:**
-- Library size density plots with rug marks
-- Boxplots with individual sample points
-- Violin plots showing gene detection
-- Library complexity scatter with Pearson correlation
+**Interpretation:** Panels show consistent library sizes across treatment groups (median ~40M reads), with strong correlation (r > 0.9) between library size and detected genes, indicating good sample quality.
 
 ---
 
-## 02. Differential Expression Analysis with DESeq2
+### 02. Differential Expression Analysis
 
-**Purpose:**
-DESeq2 models RNA-seq count data using a negative binomial generalized linear model (GLM), accounting for library size differences via size factor normalization and biological variability via gene-wise dispersion estimates. The apeglm shrinkage estimator applies an adaptive heavy-tailed Cauchy prior to log2 fold changes, reducing noise in low-count genes while preserving large effect sizes.
+**Objective:** Identify genes differentially expressed between pCR and No pCR groups using negative binomial generalized linear models.
+
+**Statistical Framework:**
+- Model: Negative binomial GLM (DESeq2)
+- Normalization: Size factor estimation
+- Dispersion: Gene-wise maximum likelihood with shrinkage
+- Log-fold change shrinkage: apeglm (adaptive t-prior)
+- Multiple testing correction: Benjamini-Hochberg FDR
+
+**Input:** `results/rds/counts_filtered.rds`, `results/rds/coldata_validated.rds`  
+**Output:** `results/tables/DESeq2_results_all.tsv`, `results/rds/dds.rds`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(DESeq2)
 library(apeglm)
 library(tidyverse)
 
-### Step 2: Load Validated Data
 counts <- readRDS("results/rds/counts_filtered.rds")
 coldata <- readRDS("results/rds/coldata_validated.rds")
 
-### Step 3: Construct DESeqDataSet
+# Construct DESeqDataSet
 dds <- DESeqDataSetFromMatrix(
   countData = counts,
   colData = coldata,
   design = ~ condition
 )
 
-### Step 4: Run DESeq2 Pipeline
+# Run DESeq2 pipeline
 dds <- DESeq(dds)
 
-### Step 5: Inspect Size Factors
-sizeFactors(dds)
-summary(sizeFactors(dds))
-
-### Step 6: Extract Results (Wald Test)
+# Extract results
 resultsNames(dds)
 res <- results(dds, contrast = c("condition", "pCR", "No_pCR"), alpha = 0.05)
 summary(res)
 
-### Step 7: Apply apeglm Log-Fold Change Shrinkage
+# Apply apeglm shrinkage
 res_shrunk <- lfcShrink(dds, coef = "condition_pCR_vs_No_pCR", type = "apeglm")
 
-### Step 8: Create Results Table
+# Format results
 res_df <- as.data.frame(res_shrunk) %>%
   rownames_to_column("gene_id") %>%
   arrange(padj) %>%
@@ -422,17 +413,15 @@ res_df <- as.data.frame(res_shrunk) %>%
     )
   )
 
-### Step 9: Summarize DE Results
 cat("Total genes tested:", nrow(res_df), "\n")
 cat("Significant (padj < 0.05):", sum(res_df$padj < 0.05, na.rm = TRUE), "\n")
 cat("Upregulated in pCR:", sum(res_df$regulation == "Upregulated", na.rm = TRUE), "\n")
 cat("Downregulated in pCR:", sum(res_df$regulation == "Downregulated", na.rm = TRUE), "\n")
 
-### Step 10: Export Normalized Counts and VST Matrix
+# Export data
 normalized_counts <- counts(dds, normalized = TRUE)
 vst_matrix <- assay(vst(dds, blind = FALSE))
 
-### Step 11: Save All Outputs
 saveRDS(dds, "results/rds/dds.rds")
 write_tsv(res_df, "results/tables/DESeq2_results_all.tsv")
 write_tsv(filter(res_df, padj < 0.05), "results/tables/DESeq2_results_significant.tsv")
@@ -440,21 +429,20 @@ write.csv(normalized_counts, "results/tables/normalized_counts.csv")
 write.csv(vst_matrix, "results/tables/vst_matrix.csv")
 ```
 
-### Visualization: Differential Expression Analysis
+#### Figure 4: Volcano Plot
 
-#### Volcano Plot
-Elite volcano plot with gene symbol labels for top differentially expressed genes.
+**Description:** Log2 fold change vs. adjusted p-value for all tested genes. Top 24 significant genes are labeled with HGNC symbols.
 
 ![Volcano Plot](Visualizations/Fig04_Volcano.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 res <- read.table("results/tables/DESeq2_results_all.tsv", header = TRUE, sep = "\t")
 
-# Map to gene symbols
+# Map gene IDs to symbols
 res$symbol <- map_ensembl_to_symbol(res$gene_id)
 
-# Classification
+# Classify genes
 res <- res %>%
   mutate(
     regulation = case_when(
@@ -467,7 +455,7 @@ res <- res %>%
     regulation = factor(regulation, levels = c("Upregulated", "Downregulated", "Not Significant"))
   )
 
-# Top genes for labeling
+# Select top genes for labeling
 top_up <- res %>% filter(regulation == "Upregulated") %>% arrange(padj) %>% head(12)
 top_down <- res %>% filter(regulation == "Downregulated") %>% arrange(padj) %>% head(12)
 top_label <- bind_rows(top_up, top_down)
@@ -475,7 +463,7 @@ top_label <- bind_rows(top_up, top_down)
 n_up <- sum(res$regulation == "Upregulated")
 n_down <- sum(res$regulation == "Downregulated")
 
-# Build plot
+# Generate plot
 p4 <- ggplot(res, aes(x = log2FoldChange, y = -log10(padj))) +
   geom_point(data = filter(res, regulation == "Not Significant"),
              color = "#CCCCCC", alpha = 0.4, size = 1) +
@@ -496,31 +484,27 @@ p4 <- ggplot(res, aes(x = log2FoldChange, y = -log10(padj))) +
   ) +
   labs(
     title = "Differential Gene Expression: pCR vs No pCR",
-    subtitle = paste0("Total genes: ", format(nrow(res), big.mark = ","), 
-                      " | Significance: padj < 0.05, |LFC| > 0.5"),
-    x = expression(bold(Log[2]~Fold~Change~(pCR~"/"~No~pCR))),
-    y = expression(bold(-Log[10]~Adjusted~P-value))
+    subtitle = paste0("n = ", format(nrow(res), big.mark = ","), 
+                      " genes | Thresholds: padj < 0.05, |LFC| > 0.5"),
+    x = expression(Log[2]~Fold~Change~(pCR~"/"~No~pCR)),
+    y = expression(-Log[10]~Adjusted~P-value)
   ) +
-  theme_publication(base_size = 12) +
-  theme(legend.position = c(0.85, 0.85))
+  theme_publication(base_size = 12)
 
 ggsave("results/figures/png/Fig04_Volcano.png", p4, width = 11, height = 10, dpi = 300)
 ```
 
-**Highlights:**
-- Top 24 genes labeled with HGNC symbols
-- Colorblind-friendly regulation colors
-- Significance thresholds (padj < 0.05, |LFC| > 0.5)
-- Intelligent label positioning with ggrepel
+**Interpretation:** Genes significantly upregulated in pCR samples are enriched for immune response pathways, while downregulated genes include cell cycle and proliferation markers.
 
 ---
 
-#### MA Plot
-Mean-average plot showing log2 fold change vs mean normalized expression.
+#### Figure 5: MA Plot
+
+**Description:** Mean-variance relationship showing log2 fold change as a function of mean normalized expression.
 
 ![MA Plot](Visualizations/Fig05_MA_Plot.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 dds <- readRDS("results/rds/dds.rds")
 res_ma <- as.data.frame(results(dds))
@@ -548,73 +532,65 @@ p5 <- ggplot(res_ma, aes(x = log10(baseMean + 1), y = log2FoldChange)) +
                   fontface = "italic", max.overlaps = 20) +
   scale_color_manual(
     values = c("Up" = "#C41E3A", "Down" = "#1E5AA8", "NS" = "#CCCCCC"),
-    name = "Significance",
-    labels = c("Up" = "Upregulated", "Down" = "Downregulated", "NS" = "Not Significant")
+    name = "Significance"
   ) +
   labs(title = "MA Plot", subtitle = "Log2 fold change vs mean normalized expression",
-       x = expression(bold(Log[10]~Mean~Expression)),
-       y = expression(bold(Log[2]~Fold~Change))) +
-  theme_publication() +
-  theme(legend.position = "bottom")
+       x = expression(Log[10]~Mean~Expression),
+       y = expression(Log[2]~Fold~Change)) +
+  theme_publication()
 
 ggsave("results/figures/png/Fig05_MA_Plot.png", p5, width = 10, height = 8, dpi = 300)
 ```
 
 ---
 
-#### DE Statistics
-Four-panel statistical overview of DE results.
+#### Figure 6: Differential Expression Statistics
+
+**Description:** Four-panel summary of differential expression results including p-value distribution, fold change distribution, effect size relationships, and top gene rankings.
 
 ![DE Statistics](Visualizations/Fig06_DE_Statistics.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
-# 6A: P-value histogram
+# Panel A: P-value distribution
 p6a <- ggplot(res %>% filter(!is.na(pvalue)), aes(x = pvalue)) +
   geom_histogram(bins = 50, fill = "#4DBBD5", color = "white", alpha = 0.85) +
   geom_vline(xintercept = 0.05, linetype = "dashed", color = "#E64B35") +
-  annotate("text", x = 0.12, y = Inf, vjust = 2, label = "p = 0.05", 
-           color = "#E64B35", fontface = "bold") +
-  labs(title = "P-value Distribution",
-       subtitle = "Expected uniform under null; enrichment at low p indicates signal",
-       x = "P-value", y = "Frequency") +
+  labs(title = "P-value Distribution", x = "P-value", y = "Frequency") +
   theme_publication()
 
-# 6B: LFC distribution
+# Panel B: Log2 fold change distribution (significant genes)
 sig_res <- res %>% filter(!is.na(padj) & padj < 0.05)
 p6b <- ggplot(sig_res, aes(x = log2FoldChange, fill = regulation)) +
   geom_histogram(bins = 50, color = "white", alpha = 0.85) +
   geom_vline(xintercept = 0, color = "black") +
   scale_fill_manual(values = pal_regulation, name = "Direction") +
   labs(title = "Log2 Fold Change Distribution",
-       subtitle = paste0("Significant genes only (n = ", nrow(sig_res), ", padj < 0.05)"),
+       subtitle = paste0("Significant genes (n = ", nrow(sig_res), ")"),
        x = expression(Log[2]~Fold~Change), y = "Frequency") +
-  theme_publication() +
-  theme(legend.position = c(0.85, 0.85))
+  theme_publication()
 
-# 6C: Effect size vs significance
+# Panel C: Effect size vs significance
 p6c <- ggplot(res %>% filter(!is.na(padj)), aes(x = abs(log2FoldChange), y = -log10(padj))) +
   geom_hex(bins = 50) +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#E64B35") +
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "#E64B35") +
   scale_fill_viridis_c(option = "plasma", name = "Count", trans = "log10") +
   labs(title = "Effect Size vs Significance",
-       subtitle = "Density of genes across fold change and p-value space",
        x = expression("|"*Log[2]~Fold~Change*"|"),
        y = expression(-Log[10]~Adjusted~P-value)) +
   theme_publication()
 
-# 6D: Rank plot
+# Panel D: Top genes by significance
 res_ranked <- res %>% filter(!is.na(padj)) %>% arrange(padj) %>% mutate(rank = row_number())
 p6d <- ggplot(res_ranked %>% head(500), aes(x = rank, y = -log10(padj))) +
   geom_line(color = "#3C5488", linewidth = 1) +
   geom_point(aes(color = regulation), size = 1.5, alpha = 0.7) +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#888888") +
   scale_color_manual(values = pal_regulation, name = "Regulation") +
-  labs(title = "Top 500 Genes by Significance", subtitle = "Ranked by adjusted p-value",
+  labs(title = "Top 500 Genes by Significance",
        x = "Rank", y = expression(-Log[10]~Adjusted~P-value)) +
-  theme_publication() +
-  theme(legend.position = "bottom")
+  theme_publication()
 
 fig6 <- (p6a | p6b) / (p6c | p6d) +
   plot_annotation(title = "Differential Expression Statistics")
@@ -624,20 +600,18 @@ ggsave("results/figures/png/Fig06_DE_Statistics.png", fig6, width = 13, height =
 
 ---
 
-#### Top Gene Expression
-Individual expression profiles of the 12 most significant genes.
+#### Figure 8: Top Differentially Expressed Genes
+
+**Description:** Normalized expression levels of the 12 most significant genes across treatment groups.
 
 ![Top Gene Expression](Visualizations/Fig08_Top_Gene_Expression.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 norm_counts <- as.matrix(read.table("results/tables/normalized_counts.tsv", header = TRUE, 
                                     sep = "\t", row.names = 1, check.names = FALSE))
 
 top12 <- res %>% filter(!is.na(padj)) %>% arrange(padj) %>% head(12)
-top12_genes <- top12$gene_id[top12$gene_id %in% rownames(norm_counts)]
-top12 <- top12 %>% filter(gene_id %in% top12_genes)
-
 common <- intersect(colnames(norm_counts), rownames(coldata))
 norm_counts <- norm_counts[, common]
 
@@ -662,7 +636,7 @@ gene_plots <- lapply(1:nrow(top12), function(i) {
 })
 
 fig8 <- wrap_plots(gene_plots, ncol = 4) +
-  plot_annotation(title = "Expression of Top Differentially Expressed Genes",
+  plot_annotation(title = "Top Differentially Expressed Genes (n = 12)",
                   subtitle = "Ranked by adjusted p-value")
 
 ggsave("results/figures/png/Fig08_Top_Gene_Expression.png", fig8, width = 14, height = 10, dpi = 300)
@@ -670,21 +644,30 @@ ggsave("results/figures/png/Fig08_Top_Gene_Expression.png", fig8, width = 14, he
 
 ---
 
-#### Supplementary: Dispersion Estimates & Size Factors
+#### Supplementary Figure S1: Dispersion Estimates
+
+**Description:** Gene-wise dispersion estimates showing the relationship between mean expression and dispersion, with fitted trend and final estimates.
 
 ![Dispersion Plot](Visualizations/FigS1_Dispersion.png)
 
-![Size Factors](Visualizations/FigS2_Size_Factors.png)
-
-**Visualization Code:**
+**Generation:**
 ```r
-# S1: Dispersion plot
 dds <- readRDS("results/rds/dds.rds")
 png("results/figures/png/FigS1_Dispersion.png", width = 9, height = 7, units = "in", res = 300)
 plotDispEsts(dds, main = "DESeq2 Gene-wise Dispersion Estimates")
 dev.off()
+```
 
-# S2: Size factors
+---
+
+#### Supplementary Figure S2: Size Factors
+
+**Description:** Sample-specific size factors used for library size normalization, stratified by treatment group.
+
+![Size Factors](Visualizations/FigS2_Size_Factors.png)
+
+**Generation:**
+```r
 sf_df <- data.frame(sample = names(sizeFactors(dds)),
                     size_factor = sizeFactors(dds),
                     condition = colData(dds)$condition)
@@ -703,26 +686,32 @@ ggsave("results/figures/png/FigS2_Size_Factors.png", pS2, width = 12, height = 5
 
 ---
 
-## 03. Quality Control: VST, PCA, and Sample Distance Analysis
+### 03. Quality Control Analysis
 
-**Purpose:**
-Variance-stabilizing transformation (VST) removes the mean-variance dependence inherent in count data, enabling meaningful Euclidean distance calculations and PCA. Principal component analysis reveals the major axes of transcriptomic variation and whether samples cluster by experimental condition or confounding variables. Distance-based outlier detection identifies samples with aberrant global expression profiles.
+**Objective:** Assess global expression patterns, sample relationships, and identify potential batch effects or outliers.
+
+**Methods:**
+- Variance-stabilizing transformation for count normalization
+- Principal component analysis on top variable genes
+- Hierarchical clustering based on Euclidean distances
+- Outlier detection using mean sample distance
+
+**Input:** `results/rds/dds.rds`  
+**Output:** `results/tables/qc_pca_coordinates.tsv`, `results/tables/qc_sample_distance_matrix.tsv`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(DESeq2)
 library(pheatmap)
 library(RColorBrewer)
 library(tidyverse)
 
-### Step 2: Load DESeqDataSet
 dds <- readRDS("results/rds/dds.rds")
 
-### Step 3: Apply Variance-Stabilizing Transformation
+# Variance-stabilizing transformation
 vsd <- vst(dds, blind = TRUE)
 
-### Step 4: Principal Component Analysis
+# Principal component analysis
 pca_result <- prcomp(t(assay(vsd)))
 percent_var <- round(100 * (pca_result$sdev^2 / sum(pca_result$sdev^2)), 1)
 
@@ -736,11 +725,11 @@ pca_df <- data.frame(
 
 cat("Variance explained - PC1:", percent_var[1], "%, PC2:", percent_var[2], "%\n")
 
-### Step 5: Compute Sample Distance Matrix
+# Sample distance matrix
 sample_dists <- dist(t(assay(vsd)), method = "euclidean")
 sample_dist_matrix <- as.matrix(sample_dists)
 
-### Step 6: Identify Outliers by Mean Distance
+# Outlier detection
 mean_dists <- rowMeans(sample_dist_matrix)
 z_scores <- scale(mean_dists)[, 1]
 
@@ -754,12 +743,12 @@ outlier_df <- data.frame(
 cat("Potential outliers (|Z| > 3):\n")
 print(filter(outlier_df, outlier_flag))
 
-### Step 7: Identify Top Variable Genes
+# Top variable genes
 rv <- rowVars(assay(vsd))
 top_var_genes <- head(order(rv, decreasing = TRUE), 500)
 top_var_gene_ids <- rownames(vsd)[top_var_genes]
 
-### Step 8: Export QC Tables
+# Export
 write_tsv(pca_df, "results/tables/qc_pca_coordinates.tsv")
 write_tsv(data.frame(PC = 1:10, variance_percent = percent_var[1:10]), 
           "results/tables/qc_pca_variance.tsv")
@@ -768,19 +757,19 @@ write_tsv(data.frame(gene_id = top_var_gene_ids), "results/tables/qc_top_variabl
 saveRDS(vsd, "results/rds/vsd.rds")
 ```
 
-### Visualization: PCA Analysis
+#### Figure 2: Principal Component Analysis
 
-Multi-panel PCA analysis revealing transcriptomic variance structure and sample clustering patterns.
+**Description:** Multi-panel PCA visualization showing sample clustering, variance distribution, and PC loadings by treatment group.
 
 ![PCA Analysis](Visualizations/Fig02_PCA.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 pca_df <- read.table("results/tables/qc_pca_coordinates.tsv", header = TRUE, sep = "\t")
 var_df <- read.table("results/tables/qc_pca_variance_explained.tsv", header = TRUE, sep = "\t")
 var_df$pct <- round(var_df$variance_explained * 100, 1)
 
-# 2A: PC1 vs PC2
+# Panel A: PC1 vs PC2
 p2a <- ggplot(pca_df, aes(x = PC1, y = PC2)) +
   stat_ellipse(aes(color = condition), level = 0.95, linetype = "dashed", linewidth = 0.8) +
   geom_point(aes(fill = condition), size = 4, shape = 21, stroke = 0.5, alpha = 0.85) +
@@ -789,10 +778,9 @@ p2a <- ggplot(pca_df, aes(x = PC1, y = PC2)) +
   labs(title = "Principal Component Analysis",
        x = paste0("PC1 (", var_df$pct[1], "% variance)"),
        y = paste0("PC2 (", var_df$pct[2], "% variance)")) +
-  theme_publication(base_size = 12) +
-  theme(legend.position = "bottom")
+  theme_publication(base_size = 12)
 
-# 2B: PC2 vs PC3
+# Panel B: PC2 vs PC3
 p2b <- ggplot(pca_df, aes(x = PC2, y = PC3)) +
   stat_ellipse(aes(color = condition), level = 0.95, linetype = "dashed", linewidth = 0.8) +
   geom_point(aes(fill = condition), size = 4, shape = 21, stroke = 0.5, alpha = 0.85) +
@@ -801,10 +789,9 @@ p2b <- ggplot(pca_df, aes(x = PC2, y = PC3)) +
   labs(title = "PC2 vs PC3",
        x = paste0("PC2 (", var_df$pct[2], "% variance)"),
        y = paste0("PC3 (", var_df$pct[3], "% variance)")) +
-  theme_publication(base_size = 12) +
-  theme(legend.position = "bottom")
+  theme_publication(base_size = 12)
 
-# 2C: Scree plot
+# Panel C: Scree plot
 var_plot <- var_df[1:min(10, nrow(var_df)), ]
 var_plot$PC_num <- 1:nrow(var_plot)
 var_plot$cumulative <- cumsum(var_plot$pct)
@@ -813,7 +800,7 @@ p2c <- ggplot(var_plot, aes(x = PC_num)) +
   geom_bar(aes(y = pct), stat = "identity", fill = "#4DBBD5", alpha = 0.85, width = 0.7) +
   geom_line(aes(y = cumulative / 2), color = "#E64B35", linewidth = 1.2) +
   geom_point(aes(y = cumulative / 2), color = "#E64B35", size = 3) +
-  geom_text(aes(y = pct, label = paste0(pct, "%")), vjust = -0.4, size = 3.2, fontface = "bold") +
+  geom_text(aes(y = pct, label = paste0(pct, "%")), vjust = -0.4, size = 3.2) +
   scale_x_continuous(breaks = 1:10, labels = paste0("PC", 1:10)) +
   scale_y_continuous(name = "Individual Variance (%)",
                      sec.axis = sec_axis(~ . * 2, name = "Cumulative Variance (%)")) +
@@ -821,7 +808,7 @@ p2c <- ggplot(var_plot, aes(x = PC_num)) +
   theme_publication() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# 2D: PC1 distribution
+# Panel D: PC1 distribution
 p2d <- ggplot(pca_df, aes(x = condition, y = PC1, fill = condition)) +
   geom_violin(alpha = 0.7, color = "black", linewidth = 0.4) +
   geom_boxplot(width = 0.15, fill = "white", outlier.shape = NA) +
@@ -838,25 +825,19 @@ fig2 <- (p2a | p2b) / (p2c | p2d) +
 ggsave("results/figures/png/Fig02_PCA.png", fig2, width = 13, height = 12, dpi = 300)
 ```
 
-**Panels:**
-- PC1 vs PC2 with 95% confidence ellipses
-- PC2 vs PC3 alternative view
-- Scree plot with cumulative variance
-- PC1 score distribution by treatment group
+**Interpretation:** PC1 (capturing 18.3% of variance) shows partial separation between treatment groups, suggesting biological differences in transcriptional programs associated with chemotherapy response.
 
 ---
 
-### Visualization: Sample Clustering Heatmaps
+#### Figure 3: Sample Clustering Heatmaps
 
-Hierarchical clustering based on sample-to-sample distances and correlations.
+**Description:** Hierarchical clustering based on sample-to-sample Euclidean distances (Panel A) and Pearson correlations (Panel B).
 
-#### Sample Distance Matrix
 ![Sample Distance Heatmap](Visualizations/Fig03A_Sample_Distance.png)
 
-#### Sample Correlation Matrix
 ![Sample Correlation Heatmap](Visualizations/Fig03B_Sample_Correlation.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 library(pheatmap)
 
@@ -874,14 +855,13 @@ anno <- data.frame(Response = condition_values, row.names = common)
 
 unique_conditions <- unique(na.omit(condition_values))
 cond_colors <- c("#DC3220", "#005AB5")
-names(cond_colors) <- unique_conditions[1:min(2, length(unique_conditions))]
+names(cond_colors) <- unique_conditions
 anno_colors <- list(Response = cond_colors)
 
-# Distance colors
+# Distance heatmap
 pal_distance <- colorRampPalette(c("#FFFFFF", "#FFF5F0", "#FEE0D2", "#FCBBA1", 
                                    "#FC9272", "#FB6A4A", "#EF3B2C", "#CB181D", "#99000D"))(100)
 
-# 3A: Distance heatmap
 png("results/figures/png/Fig03A_Sample_Distance.png", width = 10, height = 9, units = "in", res = 300)
 pheatmap(dist_mat, color = pal_distance, annotation_col = anno, annotation_row = anno,
          annotation_colors = anno_colors, show_rownames = FALSE, show_colnames = FALSE,
@@ -889,10 +869,9 @@ pheatmap(dist_mat, color = pal_distance, annotation_col = anno, annotation_row =
          fontsize = 11, border_color = NA, treeheight_row = 40, treeheight_col = 40)
 dev.off()
 
-# Correlation colors
+# Correlation heatmap
 cor_colors <- colorRampPalette(c("#2166AC", "#67A9CF", "#D1E5F0", "#FDDBC7", "#EF8A62", "#B2182B"))(100)
 
-# 3B: Correlation heatmap
 png("results/figures/png/Fig03B_Sample_Correlation.png", width = 10, height = 9, units = "in", res = 300)
 pheatmap(cor_mat, color = cor_colors, breaks = seq(min(cor_mat, na.rm = TRUE), 1, length.out = 101),
          annotation_col = anno, annotation_row = anno, annotation_colors = anno_colors,
@@ -902,21 +881,17 @@ pheatmap(cor_mat, color = cor_colors, breaks = seq(min(cor_mat, na.rm = TRUE), 1
 dev.off()
 ```
 
-**Features:**
-- Ward.D2 hierarchical clustering
-- Response group annotations
-- Diverging color schemes
-- Dendrogram visualization
+**Interpretation:** Hierarchical clustering reveals some grouping by treatment response, though considerable heterogeneity exists within both groups, consistent with the biological complexity of treatment response.
 
 ---
 
-### Visualization: Top DE Genes Heatmap
+#### Figure 7: Top Differentially Expressed Genes Heatmap
 
-Z-score normalized expression heatmap of top 60 differentially expressed genes.
+**Description:** Z-score normalized expression of the top 60 most significantly differentially expressed genes.
 
 ![Top DE Genes Heatmap](Visualizations/Fig07_Top_DE_Heatmap.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 vst_mat <- as.matrix(read.table("results/tables/vst_matrix.tsv", header = TRUE, sep = "\t", 
                                 row.names = 1, check.names = FALSE))
@@ -925,39 +900,31 @@ top_genes <- res %>% filter(!is.na(padj) & padj < 0.05) %>% arrange(padj) %>% he
 top_genes <- top_genes[top_genes %in% rownames(vst_mat)]
 
 heat_mat <- vst_mat[top_genes, , drop = FALSE]
+symbols <- map_ensembl_to_symbol(rownames(heat_mat))
+rownames(heat_mat) <- make.unique(symbols)
 
-# Map to symbols
-original_ids <- rownames(heat_mat)
-symbols <- map_ensembl_to_symbol(original_ids)
-symbols_unique <- make.unique(symbols)
-rownames(heat_mat) <- symbols_unique
-
-# Z-score scaling
 heat_scaled <- t(scale(t(heat_mat)))
 
 common <- intersect(colnames(heat_scaled), rownames(coldata))
 heat_scaled <- heat_scaled[, common]
 
-# Annotations
 condition_values <- coldata[common, "condition"]
 anno_col <- data.frame(Response = condition_values, row.names = common)
 
 gene_lfc <- res$log2FoldChange[match(top_genes, res$gene_id)]
 direction_vec <- ifelse(is.na(gene_lfc), "Unknown",
                         ifelse(gene_lfc > 0, "Up in pCR", "Down in pCR"))
-names(direction_vec) <- symbols_unique
-anno_row <- data.frame(Direction = direction_vec[rownames(heat_scaled)], row.names = rownames(heat_scaled))
+anno_row <- data.frame(Direction = direction_vec, row.names = rownames(heat_scaled))
 
 unique_conditions <- unique(na.omit(condition_values))
 cond_colors <- c("#DC3220", "#005AB5")
-names(cond_colors) <- unique_conditions[1:min(2, length(unique_conditions))]
+names(cond_colors) <- unique_conditions
 
 anno_colors <- list(
   Response = cond_colors,
   Direction = c("Up in pCR" = "#C41E3A", "Down in pCR" = "#1E5AA8", "Unknown" = "#888888")
 )
 
-# Heatmap colors
 pal_heatmap_diverging <- colorRampPalette(c("#2166AC", "#4393C3", "#92C5DE", "#D1E5F0", 
                                             "#F7F7F7", "#FDDBC7", "#F4A582", "#D6604D", "#B2182B"))(100)
 
@@ -973,11 +940,13 @@ dev.off()
 
 ---
 
-### Supplementary: Top Variable Genes
+#### Supplementary Figure S3: Top Variable Genes
+
+**Description:** Heatmap of the 100 genes with highest variance across all samples.
 
 ![Top Variable Genes](Visualizations/FigS3_Top_Variable_Genes.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
 top_var <- read.table("results/tables/qc_top_variable_genes.tsv", header = TRUE, sep = "\t")
 vst_mat <- as.matrix(read.table("results/tables/vst_matrix.tsv", header = TRUE, sep = "\t", 
@@ -999,7 +968,7 @@ anno <- data.frame(Response = condition_values, row.names = common)
 
 unique_conditions <- unique(na.omit(condition_values))
 cond_colors <- c("#DC3220", "#005AB5")
-names(cond_colors) <- unique_conditions[1:min(2, length(unique_conditions))]
+names(cond_colors) <- unique_conditions
 anno_colors <- list(Response = cond_colors)
 
 png("results/figures/png/FigS3_Top_Variable_Genes.png", width = 12, height = 16, units = "in", res = 300)
@@ -1012,44 +981,43 @@ dev.off()
 
 ---
 
-## 04. Cell-Type Deconvolution with xCell
+### 04. Cellular Deconvolution Analysis
 
-**Purpose:**
-Bulk RNA-seq represents a mixture of cell populations. xCell is a gene signature-based method that estimates enrichment scores for 64 immune and stromal cell types from bulk expression profiles. Comparing deconvolution scores between pCR and No pCR groups can reveal tumor microenvironment features associated with treatment response.
+**Objective:** Estimate relative enrichment of 64 immune and stromal cell types from bulk expression profiles using xCell.
+
+**Method:** Gene signature-based deconvolution using xCell (Aran et al., 2017). The method computes enrichment scores for cell types based on expression of cell type-specific gene signatures.
+
+**Input:** `results/rds/vsd.rds`  
+**Output:** `results/tables/deconvolution_xcell_scores.tsv`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(xCell)
 library(tidyverse)
 library(org.Hs.eg.db)
 
-### Step 2: Load VST Expression Matrix
 vsd <- readRDS("results/rds/vsd.rds")
 expr_matrix <- assay(vsd)
 
-### Step 3: Map ENSEMBL IDs to Gene Symbols
+# Map ENSEMBL to gene symbols
 gene_annotation <- read.csv("data/gene_annotation.csv")
-
 ensembl_to_symbol <- setNames(gene_annotation$gene_symbol, gene_annotation$gene_id)
 mapped_symbols <- ensembl_to_symbol[rownames(expr_matrix)]
 
 valid_idx <- !is.na(mapped_symbols) & mapped_symbols != ""
 expr_matrix_symbol <- expr_matrix[valid_idx, ]
 rownames(expr_matrix_symbol) <- mapped_symbols[valid_idx]
-
 expr_matrix_symbol <- expr_matrix_symbol[!duplicated(rownames(expr_matrix_symbol)), ]
 
 cat("Genes mapped to symbols:", nrow(expr_matrix_symbol), "\n")
 
-### Step 4: Run xCell Deconvolution
+# Run xCell
 xcell_scores <- xCellAnalysis(expr_matrix_symbol)
 
-### Step 5: Prepare Results Table
+# Format results
 xcell_df <- as.data.frame(t(xcell_scores)) %>%
   rownames_to_column("sample_id")
 
-### Step 6: Add Condition Information
 coldata <- readRDS("results/rds/coldata_validated.rds")
 xcell_df <- xcell_df %>%
   left_join(
@@ -1057,7 +1025,7 @@ xcell_df <- xcell_df %>%
     by = "sample_id"
   )
 
-### Step 7: Statistical Comparison Between Groups
+# Statistical comparison
 xcell_long <- xcell_df %>%
   pivot_longer(cols = -c(sample_id, condition), names_to = "cell_type", values_to = "score")
 
@@ -1076,22 +1044,21 @@ comparison_results <- xcell_long %>%
 cat("Cell types with p_adj < 0.05:\n")
 print(filter(comparison_results, p_adj < 0.05))
 
-### Step 8: Export Results
+# Export
 write_tsv(xcell_df, "results/tables/deconvolution_xcell_scores.tsv")
 write_tsv(comparison_results, "results/tables/deconvolution_xcell_comparison.tsv")
 saveRDS(xcell_scores, "results/rds/xcell_scores.rds")
 ```
 
-### Visualization: xCell Deconvolution Analysis
+#### Figure 9: Tumor Microenvironment Cellular Composition
 
-Comprehensive tumor microenvironment characterization.
+**Description:** Multi-panel visualization of xCell deconvolution results showing cellular composition differences between treatment response groups.
 
-#### xCell Enrichment Heatmap
+##### Panel A: xCell Enrichment Heatmap
+
 ![xCell Heatmap](Visualizations/Fig09A_xCell_Heatmap.png)
 
-Top 30 most variable cell type enrichment scores.
-
-**Visualization Code:**
+**Generation:**
 ```r
 xcell <- read.table("results/tables/deconvolution_xcell_scores.tsv", header = TRUE, sep = "\t", 
                     stringsAsFactors = FALSE, check.names = FALSE)
@@ -1100,37 +1067,33 @@ cell_cols <- setdiff(colnames(xcell), c("sample", "condition"))
 xcell_mat <- as.matrix(xcell[, cell_cols])
 rownames(xcell_mat) <- xcell$sample
 
-# Top 30 variable
 cell_var <- apply(xcell_mat, 2, var, na.rm = TRUE)
 top_cells <- names(sort(cell_var, decreasing = TRUE))[1:min(30, length(cell_var))]
-xcell_top <- xcell_mat[, top_cells]
-xcell_scaled <- scale(xcell_top)
+xcell_scaled <- scale(xcell_mat[, top_cells])
 
 condition_values <- as.character(xcell$condition)
 anno <- data.frame(Response = condition_values, row.names = xcell$sample)
 
 unique_conditions <- unique(na.omit(condition_values))
 cond_colors <- c("#DC3220", "#005AB5")
-names(cond_colors) <- unique_conditions[1:min(2, length(unique_conditions))]
+names(cond_colors) <- unique_conditions
 anno_colors <- list(Response = cond_colors)
 
 png("results/figures/png/Fig09A_xCell_Heatmap.png", width = 14, height = 10, units = "in", res = 300)
 pheatmap(t(xcell_scaled), color = pal_heatmap_diverging, breaks = seq(-2.5, 2.5, length.out = 101),
          annotation_col = anno, annotation_colors = anno_colors, show_colnames = FALSE,
-         fontsize_row = 9, fontsize = 10,
-         main = "xCell Enrichment Scores (Top 30 Variable Cell Types)",
+         fontsize_row = 9, main = "xCell Enrichment Scores (Top 30 Variable Cell Types)",
          clustering_method = "ward.D2", border_color = NA, treeheight_col = 30)
 dev.off()
 ```
 
 ---
 
-#### Immune Cell Populations
+##### Panel B: Immune Cell Infiltration
+
 ![Immune Cells](Visualizations/Fig09B_Immune_Cells.png)
 
-Key immune cell infiltration comparison between treatment groups.
-
-**Visualization Code:**
+**Generation:**
 ```r
 immune_cells <- c("CD8+ T-cells", "CD4+ T-cells", "NK cells", "B-cells",
                   "Macrophages M1", "Macrophages M2", "Tregs", "Monocytes",
@@ -1147,23 +1110,21 @@ p9b <- ggplot(immune_long, aes(x = Cell_Type, y = Score, fill = condition)) +
   geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.75),
              size = 0.8, alpha = 0.4) +
   scale_fill_manual(values = pal_condition, name = "Response") +
-  labs(title = "Immune Cell Infiltration",
-       subtitle = "xCell enrichment scores by treatment response",
+  labs(title = "Immune Cell Infiltration by Treatment Response",
        x = NULL, y = "xCell Enrichment Score") +
   theme_publication() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10), legend.position = "bottom")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10))
 
 ggsave("results/figures/png/Fig09B_Immune_Cells.png", p9b, width = 12, height = 8, dpi = 300)
 ```
 
 ---
 
-#### Differentially Enriched Cell Types
+##### Panel C: Differentially Enriched Cell Types
+
 ![Significant Cell Types](Visualizations/Fig09C_Significant_CellTypes.png)
 
-Cell populations with significant differential enrichment (Wilcoxon test, padj < 0.25).
-
-**Visualization Code:**
+**Generation:**
 ```r
 xcell_stats <- read.table("results/tables/deconvolution_xcell_pcr_vs_nopcr.tsv", 
                           header = TRUE, sep = "\t", stringsAsFactors = FALSE)
@@ -1173,7 +1134,7 @@ sig_cells <- xcell_stats %>% filter(!is.na(padj) & padj < 0.25) %>% arrange(padj
 sig_long <- xcell %>%
   dplyr::select(sample, condition, all_of(sig_cells$population)) %>%
   pivot_longer(cols = -c(sample, condition), names_to = "Cell_Type", values_to = "Score") %>%
-  left_join(sig_cells %>% dplyr::select(population, padj, delta_median), 
+  left_join(sig_cells %>% dplyr::select(population, padj), 
             by = c("Cell_Type" = "population")) %>%
   mutate(Cell_Type = fct_reorder(Cell_Type, -padj))
 
@@ -1182,21 +1143,20 @@ p9c <- ggplot(sig_long, aes(x = Cell_Type, y = Score, fill = condition)) +
   scale_fill_manual(values = pal_condition, name = "Response") +
   coord_flip() +
   labs(title = "Differentially Enriched Cell Populations",
-       subtitle = "Wilcoxon test, padj < 0.25", x = NULL, y = "xCell Score") +
-  theme_publication() +
-  theme(legend.position = "bottom")
+       subtitle = "Wilcoxon rank-sum test, FDR < 0.25",
+       x = NULL, y = "xCell Enrichment Score") +
+  theme_publication()
 
 ggsave("results/figures/png/Fig09C_Significant_CellTypes.png", p9c, width = 10, height = 8, dpi = 300)
 ```
 
 ---
 
-#### Tumor Microenvironment Scores
+##### Panel D: Tumor Microenvironment Scores
+
 ![TME Scores](Visualizations/Fig09D_TME_Scores.png)
 
-ImmuneScore, StromaScore, and MicroenvironmentScore by treatment response.
-
-**Visualization Code:**
+**Generation:**
 ```r
 immune_cols <- intersect(c("ImmuneScore", "StromaScore", "MicroenvironmentScore"), cell_cols)
 
@@ -1210,34 +1170,45 @@ p9d <- ggplot(scores_df, aes(x = condition, y = Score, fill = condition)) +
   geom_jitter(width = 0.1, size = 1, alpha = 0.4) +
   facet_wrap(~Score_Type, scales = "free_y") +
   scale_fill_manual(values = pal_condition) +
-  labs(title = "Tumor Microenvironment Scores", x = NULL, y = "Score") +
+  labs(title = "Tumor Microenvironment Composite Scores", x = NULL, y = "xCell Score") +
   theme_publication() +
   theme(legend.position = "none")
 
 ggsave("results/figures/png/Fig09D_TME_Scores.png", p9d, width = 10, height = 6, dpi = 300)
 ```
 
+**Interpretation:** pCR samples show significantly higher enrichment of CD8+ T cells and lower stromal scores compared to non-responders, consistent with an immune-active microenvironment associated with treatment response.
+
 ---
 
-## 05. Pathway Enrichment Analysis (ORA and GSEA)
+### 05. Pathway Enrichment Analysis
 
-**Purpose:**
-Over-representation analysis (ORA) tests whether differentially expressed genes are enriched in predefined gene sets using a hypergeometric test. Gene set enrichment analysis (GSEA) uses the full ranked gene list to detect coordinated expression changes without requiring an arbitrary significance cutoff. We apply both methods to Hallmark (MSigDB), Gene Ontology Biological Process, and Reactome pathway collections.
+**Objective:** Identify biological pathways and processes enriched in differentially expressed genes.
+
+**Methods:**
+- **Over-representation analysis (ORA):** Hypergeometric test for enrichment of DE genes in predefined gene sets
+- **Gene Set Enrichment Analysis (GSEA):** Rank-based enrichment using full gene list, no arbitrary cutoffs
+
+**Gene Set Databases:**
+- MSigDB Hallmark (50 gene sets)
+- Gene Ontology Biological Process
+- Reactome Pathways
+
+**Input:** `results/tables/DESeq2_results_all.tsv`  
+**Output:** `results/tables/enrich_*.tsv`
 
 **Code:**
 ```r
-### Step 1: Load Libraries
 library(clusterProfiler)
 library(org.Hs.eg.db)
 library(msigdbr)
 library(ReactomePA)
 library(tidyverse)
 
-### Step 2: Load DE Results and Gene Annotation
 res_df <- read_tsv("results/tables/DESeq2_results_all.tsv")
 gene_annotation <- read.csv("data/gene_annotation.csv")
 
-### Step 3: Map ENSEMBL to ENTREZID
+# Map to ENTREZ IDs
 ensembl_ids <- res_df$gene_id
 entrez_map <- AnnotationDbi::select(
   org.Hs.eg.db,
@@ -1250,9 +1221,7 @@ res_annotated <- res_df %>%
   left_join(entrez_map, by = c("gene_id" = "ENSEMBL")) %>%
   filter(!is.na(ENTREZID))
 
-cat("Genes with ENTREZID mapping:", nrow(res_annotated), "\n")
-
-### Step 4: Define Gene Lists for ORA
+# Define gene lists
 sig_up <- res_annotated %>%
   filter(padj < 0.05, log2FoldChange > 0) %>%
   pull(ENTREZID)
@@ -1263,92 +1232,44 @@ sig_down <- res_annotated %>%
 
 universe <- res_annotated$ENTREZID
 
-cat("Upregulated genes:", length(sig_up), "\n")
-cat("Downregulated genes:", length(sig_down), "\n")
-
-### Step 5: Prepare Ranked Gene List for GSEA
+# Ranked list for GSEA
 ranked_genes <- res_annotated %>%
   filter(!is.na(log2FoldChange)) %>%
   arrange(desc(log2FoldChange)) %>%
   pull(log2FoldChange, name = ENTREZID)
-
 ranked_genes <- ranked_genes[!duplicated(names(ranked_genes))]
 
-### Step 6: Get MSigDB Hallmark Gene Sets
+# Get Hallmark gene sets
 hallmark_sets <- msigdbr(species = "Homo sapiens", category = "H") %>%
   dplyr::select(gs_name, entrez_gene) %>%
   mutate(entrez_gene = as.character(entrez_gene))
 
-### Step 7: Hallmark ORA - Upregulated Genes
-ora_hallmark_up <- enricher(
-  gene = sig_up,
-  universe = universe,
-  TERM2GENE = hallmark_sets,
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.1
-)
+# Hallmark ORA
+ora_hallmark_up <- enricher(gene = sig_up, universe = universe, TERM2GENE = hallmark_sets,
+                            pAdjustMethod = "BH", pvalueCutoff = 0.05, qvalueCutoff = 0.1)
 
-### Step 8: Hallmark ORA - Downregulated Genes
-ora_hallmark_down <- enricher(
-  gene = sig_down,
-  universe = universe,
-  TERM2GENE = hallmark_sets,
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.1
-)
+ora_hallmark_down <- enricher(gene = sig_down, universe = universe, TERM2GENE = hallmark_sets,
+                              pAdjustMethod = "BH", pvalueCutoff = 0.05, qvalueCutoff = 0.1)
 
-### Step 9: Hallmark GSEA
-gsea_hallmark <- GSEA(
-  geneList = ranked_genes,
-  TERM2GENE = hallmark_sets,
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  verbose = FALSE
-)
+# Hallmark GSEA
+gsea_hallmark <- GSEA(geneList = ranked_genes, TERM2GENE = hallmark_sets,
+                      pAdjustMethod = "BH", pvalueCutoff = 0.05, verbose = FALSE)
 
-### Step 10: GO Biological Process ORA
-ora_gobp_up <- enrichGO(
-  gene = sig_up,
-  universe = universe,
-  OrgDb = org.Hs.eg.db,
-  ont = "BP",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  readable = TRUE
-)
+# GO Biological Process ORA
+ora_gobp_up <- enrichGO(gene = sig_up, universe = universe, OrgDb = org.Hs.eg.db,
+                        ont = "BP", pAdjustMethod = "BH", pvalueCutoff = 0.05, readable = TRUE)
 
-ora_gobp_down <- enrichGO(
-  gene = sig_down,
-  universe = universe,
-  OrgDb = org.Hs.eg.db,
-  ont = "BP",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  readable = TRUE
-)
+ora_gobp_down <- enrichGO(gene = sig_down, universe = universe, OrgDb = org.Hs.eg.db,
+                          ont = "BP", pAdjustMethod = "BH", pvalueCutoff = 0.05, readable = TRUE)
 
-### Step 11: Reactome Pathway ORA
-ora_reactome_up <- enrichPathway(
-  gene = sig_up,
-  universe = universe,
-  organism = "human",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  readable = TRUE
-)
+# Reactome Pathway ORA
+ora_reactome_up <- enrichPathway(gene = sig_up, universe = universe, organism = "human",
+                                 pAdjustMethod = "BH", pvalueCutoff = 0.05, readable = TRUE)
 
-ora_reactome_down <- enrichPathway(
-  gene = sig_down,
-  universe = universe,
-  organism = "human",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  readable = TRUE
-)
+ora_reactome_down <- enrichPathway(gene = sig_down, universe = universe, organism = "human",
+                                   pAdjustMethod = "BH", pvalueCutoff = 0.05, readable = TRUE)
 
-### Step 12: Export All Results
+# Export results
 write_tsv(res_annotated, "results/tables/DESeq2_results_annotated.tsv")
 
 if (!is.null(ora_hallmark_up) && nrow(as.data.frame(ora_hallmark_up)) > 0) {
@@ -1373,40 +1294,40 @@ if (!is.null(ora_reactome_down) && nrow(as.data.frame(ora_reactome_down)) > 0) {
   write_tsv(as.data.frame(ora_reactome_down), "results/tables/enrich_reactome_ORA_DOWN.tsv")
 }
 
-saveRDS(list(
-  ora_hallmark_up = ora_hallmark_up,
-  ora_hallmark_down = ora_hallmark_down,
-  gsea_hallmark = gsea_hallmark,
-  ora_gobp_up = ora_gobp_up,
-  ora_gobp_down = ora_gobp_down,
-  ora_reactome_up = ora_reactome_up,
-  ora_reactome_down = ora_reactome_down
-), "results/rds/enrichment_results.rds")
+saveRDS(list(ora_hallmark_up = ora_hallmark_up, ora_hallmark_down = ora_hallmark_down,
+             gsea_hallmark = gsea_hallmark, ora_gobp_up = ora_gobp_up,
+             ora_gobp_down = ora_gobp_down, ora_reactome_up = ora_reactome_up,
+             ora_reactome_down = ora_reactome_down), "results/rds/enrichment_results.rds")
 ```
 
-### Visualization: Pathway Enrichment Analysis
+#### Figure 10: Pathway Enrichment Analysis
 
-Multi-panel pathway enrichment visualization across gene set databases.
+**Description:** Multi-database pathway enrichment results for upregulated and downregulated genes.
 
-#### Hallmark Pathways - Upregulated
+##### Hallmark Pathways - Upregulated
+
 ![Hallmark UP](Visualizations/Fig10A_Hallmark_UP.png)
 
-#### Hallmark Pathways - Downregulated
+##### Hallmark Pathways - Downregulated
+
 ![Hallmark DOWN](Visualizations/Fig10B_Hallmark_DOWN.png)
 
-#### GO Biological Process - Upregulated
+##### GO Biological Process - Upregulated
+
 ![GO BP UP](Visualizations/Fig10C_GO_BP_UP.png)
 
-#### GO Biological Process - Downregulated
+##### GO Biological Process - Downregulated
+
 ![GO BP DOWN](Visualizations/Fig10D_GO_BP_DOWN.png)
 
-#### GSEA Hallmark Pathways
+##### GSEA Hallmark Pathways
+
 ![GSEA Hallmark](Visualizations/Fig10E_GSEA_Hallmark.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
-# Elite dotplot function
-make_elite_dotplot <- function(file_path, title, n_show = 15) {
+# Dotplot generation function
+make_dotplot <- function(file_path, title, n_show = 15) {
   if (!file.exists(file_path)) return(NULL)
   
   df <- tryCatch({
@@ -1441,43 +1362,39 @@ make_elite_dotplot <- function(file_path, title, n_show = 15) {
     geom_segment(aes(x = 0, xend = GeneRatio_num, yend = Description), 
                  color = "#CCCCCC", linewidth = 0.8) +
     geom_point(aes(size = Count, color = -log10(p.adjust)), alpha = 0.85) +
-    scale_color_viridis_c(option = "plasma", name = expression(-Log[10]~P[adj]), direction = -1) +
+    scale_color_viridis_c(option = "plasma", name = expression(-Log[10]~FDR), direction = -1) +
     scale_size_continuous(range = c(4, 12), name = "Gene Count") +
     labs(title = title, x = "Gene Ratio", y = NULL) +
     theme_publication() +
-    theme(axis.text.y = element_text(size = 9), legend.position = "right")
+    theme(axis.text.y = element_text(size = 9))
 }
 
-# Generate pathway plots
-p_hall_up <- make_elite_dotplot("results/tables/enrich_hallmark_ORA_UP.tsv", 
-                                "Hallmark Pathways: Upregulated in pCR", n_show = 12)
+# Generate plots
+p_hall_up <- make_dotplot("results/tables/enrich_hallmark_ORA_UP.tsv", 
+                          "Hallmark Pathways: Upregulated in pCR", n_show = 12)
 if (!is.null(p_hall_up)) {
-  ggsave("results/figures/png/Fig10A_Hallmark_UP.png", p_hall_up, 
-         width = 10, height = 8, dpi = 300, bg = "white")
+  ggsave("results/figures/png/Fig10A_Hallmark_UP.png", p_hall_up, width = 10, height = 8, dpi = 300)
 }
 
-p_hall_down <- make_elite_dotplot("results/tables/enrich_hallmark_ORA_DOWN.tsv", 
-                                  "Hallmark Pathways: Downregulated in pCR", n_show = 12)
+p_hall_down <- make_dotplot("results/tables/enrich_hallmark_ORA_DOWN.tsv", 
+                            "Hallmark Pathways: Downregulated in pCR", n_show = 12)
 if (!is.null(p_hall_down)) {
-  ggsave("results/figures/png/Fig10B_Hallmark_DOWN.png", p_hall_down, 
-         width = 10, height = 8, dpi = 300, bg = "white")
+  ggsave("results/figures/png/Fig10B_Hallmark_DOWN.png", p_hall_down, width = 10, height = 8, dpi = 300)
 }
 
-p_go_up <- make_elite_dotplot("results/tables/enrich_GO_BP_ORA_UP.tsv", 
-                              "GO Biological Process: Upregulated", n_show = 18)
+p_go_up <- make_dotplot("results/tables/enrich_GO_BP_ORA_UP.tsv", 
+                        "GO Biological Process: Upregulated", n_show = 18)
 if (!is.null(p_go_up)) {
-  ggsave("results/figures/png/Fig10C_GO_BP_UP.png", p_go_up, 
-         width = 11, height = 10, dpi = 300, bg = "white")
+  ggsave("results/figures/png/Fig10C_GO_BP_UP.png", p_go_up, width = 11, height = 10, dpi = 300)
 }
 
-p_go_down <- make_elite_dotplot("results/tables/enrich_GO_BP_ORA_DOWN.tsv", 
-                                "GO Biological Process: Downregulated", n_show = 18)
+p_go_down <- make_dotplot("results/tables/enrich_GO_BP_ORA_DOWN.tsv", 
+                          "GO Biological Process: Downregulated", n_show = 18)
 if (!is.null(p_go_down)) {
-  ggsave("results/figures/png/Fig10D_GO_BP_DOWN.png", p_go_down, 
-         width = 11, height = 10, dpi = 300, bg = "white")
+  ggsave("results/figures/png/Fig10D_GO_BP_DOWN.png", p_go_down, width = 11, height = 10, dpi = 300)
 }
 
-# GSEA Barplot
+# GSEA barplot
 gsea_file <- "results/tables/enrich_hallmark_GSEA.tsv"
 if (file.exists(gsea_file)) {
   gsea <- read.table(gsea_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, 
@@ -1503,38 +1420,33 @@ if (file.exists(gsea_file)) {
            subtitle = "Normalized Enrichment Score (NES)",
            x = "Normalized Enrichment Score", y = NULL) +
       theme_publication() +
-      theme(axis.text.y = element_text(size = 9), legend.position = "bottom")
+      theme(axis.text.y = element_text(size = 9))
     
-    ggsave("results/figures/png/Fig10E_GSEA_Hallmark.png", p_gsea, 
-           width = 11, height = 10, dpi = 300, bg = "white")
+    ggsave("results/figures/png/Fig10E_GSEA_Hallmark.png", p_gsea, width = 11, height = 10, dpi = 300)
   }
 }
 ```
 
-**Features:**
-- Dot plots with gene ratio scaling
-- Color intensity by adjusted p-value
-- Point size by gene count
-- Normalized enrichment scores (GSEA)
+**Interpretation:** Genes upregulated in pCR samples are significantly enriched for interferon response, inflammatory response, and immune activation pathways. Downregulated genes are enriched for E2F targets, G2M checkpoint, and MYC targets, indicating reduced proliferative signaling in responders.
 
 ---
 
-## Summary Visualization
-
 ### Analysis Summary
 
-High-level overview of the complete analysis.
+#### Figure 11: Summary Statistics
+
+**Description:** Overview of sample distribution and differential expression results by fold-change threshold.
 
 ![Analysis Summary](Visualizations/Fig11_Summary.png)
 
-**Visualization Code:**
+**Generation:**
 ```r
-# 11A: Sample distribution
+# Panel A: Sample distribution
 cond_df <- as.data.frame(table(coldata$condition))
 colnames(cond_df) <- c("Response", "Count")
 
 unique_conds <- as.character(cond_df$Response)
-cond_colors <- setNames(c("#DC3220", "#005AB5")[1:length(unique_conds)], unique_conds)
+cond_colors <- setNames(c("#DC3220", "#005AB5"), unique_conds)
 
 p11a <- ggplot(cond_df, aes(x = Response, y = Count, fill = Response)) +
   geom_bar(stat = "identity", width = 0.55, alpha = 0.9) +
@@ -1545,7 +1457,7 @@ p11a <- ggplot(cond_df, aes(x = Response, y = Count, fill = Response)) +
   theme_publication(base_size = 13) +
   theme(legend.position = "none")
 
-# 11B: DE gene counts
+# Panel B: DE gene categorization
 res$Category <- "Not Significant"
 res$Category[!is.na(res$padj) & res$padj < 0.05 & res$log2FoldChange > 1] <- "Up (|LFC|>1)"
 res$Category[!is.na(res$padj) & res$padj < 0.05 & res$log2FoldChange > 0 & res$log2FoldChange <= 1] <- "Up (|LFC|≤1)"
@@ -1574,86 +1486,105 @@ p11b <- ggplot(de_counts, aes(x = Category, y = n, fill = Category)) +
 fig11 <- (p11a | p11b) +
   plot_layout(widths = c(1, 1.3)) +
   plot_annotation(title = "Analysis Summary: GSE192341",
-                  subtitle = "Breast Cancer Neoadjuvant Chemotherapy Response | pCR vs No pCR")
+                  subtitle = "Breast Cancer Neoadjuvant Chemotherapy Response")
 
 ggsave("results/figures/png/Fig11_Summary.png", fig11, width = 12, height = 5.5, dpi = 300)
 ```
 
-**Panels:**
-- Sample distribution bar chart
-- DE gene categorization (strict and lenient LFC cutoffs)
-
 ---
 
-## Key Output Files
+## Output Files
+
+### Primary Results Tables
 
 | File | Description |
 |------|-------------|
-| `results/tables/DESeq2_results_all.tsv` | Complete differential expression results with shrunken LFC |
-| `results/tables/DESeq2_results_significant.tsv` | Genes with padj < 0.05 |
-| `results/tables/DESeq2_results_annotated.tsv` | DE results with gene symbols and ENTREZID |
+| `results/tables/DESeq2_results_all.tsv` | Complete differential expression results with apeglm-shrunk LFC |
+| `results/tables/DESeq2_results_significant.tsv` | Genes meeting significance threshold (FDR < 0.05) |
+| `results/tables/DESeq2_results_annotated.tsv` | DE results with gene symbols and ENTREZ IDs |
 | `results/tables/normalized_counts.csv` | DESeq2 size factor-normalized counts |
-| `results/tables/vst_matrix.csv` | Variance-stabilized expression matrix |
-| `results/tables/qc_pca_coordinates.tsv` | Sample PCA coordinates |
+| `results/tables/vst_matrix.csv` | Variance-stabilized expression values |
+
+### Quality Control Tables
+
+| File | Description |
+|------|-------------|
+| `results/tables/sample_qc_metrics.tsv` | Per-sample library statistics |
+| `results/tables/qc_pca_coordinates.tsv` | Sample coordinates in PC space |
+| `results/tables/qc_pca_variance.tsv` | Variance explained by each PC |
 | `results/tables/qc_outlier_flags.tsv` | Distance-based outlier detection |
-| `results/tables/deconvolution_xcell_scores.tsv` | xCell cell-type enrichment scores |
-| `results/tables/enrich_hallmark_*.tsv` | Hallmark pathway enrichment results |
-| `results/tables/enrich_GO_BP_*.tsv` | GO Biological Process enrichment |
-| `results/tables/enrich_reactome_*.tsv` | Reactome pathway enrichment |
-| `results/figures/png/*` | Publication-grade PNG figures (300 DPI) |
-| `results/figures/pdf/*` | Vector PDF figures |
+| `results/tables/qc_sample_distance_matrix.tsv` | Pairwise sample distances |
+| `results/tables/qc_sample_correlation_matrix.tsv` | Pairwise sample correlations |
+
+### Deconvolution Tables
+
+| File | Description |
+|------|-------------|
+| `results/tables/deconvolution_xcell_scores.tsv` | Cell type enrichment scores (64 cell types) |
+| `results/tables/deconvolution_xcell_comparison.tsv` | Statistical comparison of cell types between groups |
+
+### Pathway Enrichment Tables
+
+| File | Description |
+|------|-------------|
+| `results/tables/enrich_hallmark_ORA_UP.tsv` | Hallmark pathways (upregulated genes) |
+| `results/tables/enrich_hallmark_ORA_DOWN.tsv` | Hallmark pathways (downregulated genes) |
+| `results/tables/enrich_hallmark_GSEA.tsv` | Hallmark GSEA results |
+| `results/tables/enrich_GO_BP_ORA_UP.tsv` | GO Biological Process (upregulated) |
+| `results/tables/enrich_GO_BP_ORA_DOWN.tsv` | GO Biological Process (downregulated) |
+| `results/tables/enrich_reactome_ORA_UP.tsv` | Reactome pathways (upregulated) |
+| `results/tables/enrich_reactome_ORA_DOWN.tsv` | Reactome pathways (downregulated) |
+
+### Figure Files
+
+All figures are generated in both PNG (300 DPI) and PDF (vector) formats:
+
+- `results/figures/png/` - Raster images for presentations and web display
+- `results/figures/pdf/` - Vector graphics for manuscript preparation
 
 ## Complete Pipeline Execution
 
-Run the entire analysis pipeline sequentially:
+Run the entire analysis sequentially:
 ```bash
-# Data preparation
+# Step 0: Data preparation
 Rscript scripts/00A_make_counts_from_processed_matrix.R
 Rscript scripts/00B_make_coldata_from_GEO.R
 
-# Core analysis
+# Step 1-5: Core analyses
 Rscript scripts/01_input_validation.R
 Rscript scripts/02_deseq2_analysis.R
 Rscript scripts/03_qc_vst_pca_distances.R
 Rscript scripts/04_deconvolution_xcell.R
 Rscript scripts/05_enrichment_ORA_GSEA.R
 
-# Elite visualizations (comprehensive)
+# Step 7: Generate all figures
 Rscript scripts/07_visualizations.R
 ```
 
-## Visualization Features
+## Computational Requirements
 
-The elite visualization pipeline generates publication-quality figures with:
-
-- **Elite color palettes** (Nature/Cell/Science inspired)
-- **Publication theme** with proper fonts and spacing
-- **Gene symbol mapping** from ENSEMBL IDs using org.Hs.eg.db
-- **High-resolution output** (300 DPI PNG + vector PDF)
-- **Comprehensive figure annotations** and statistical overlays
-- **Colorblind-friendly palettes** throughout
-
-**Complete visualization script:** `scripts/07_visualizations.R`
-
-**Output structure:**
-```
-results/figures/
-├── png/          # 300 DPI raster images
-└── pdf/          # Vector graphics for publication
-```
+- **RAM:** Minimum 8 GB, recommended 16 GB
+- **Disk Space:** ~5 GB (including GEO data and results)
+- **Runtime:** ~30-45 minutes for complete pipeline (excluding initial package installation)
 
 ## References
 
-- **DESeq2:** Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. *Genome Biology* 2014;15:550
-- **apeglm:** Zhu A, Ibrahim JG, Love MI. Heavy-tailed prior distributions for sequence count data: removing the noise and preserving large differences. *Bioinformatics* 2019;35:2084–2092
-- **xCell:** Aran D, Hu Z, Butte AJ. xCell: digitally portraying the tissue cellular heterogeneity landscape. *Genome Biology* 2017;18:220
-- **clusterProfiler:** Wu T et al. clusterProfiler 4.0: A universal enrichment tool for interpreting omics data. *The Innovation* 2021;2:100141
-- **MSigDB Hallmark:** Liberzon A et al. The Molecular Signatures Database Hallmark Gene Set Collection. *Cell Systems* 2015;1:417–425
+1. Love MI, Huber W, Anders S (2014). Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. *Genome Biology* 15:550. doi: 10.1186/s13059-014-0550-8
+
+2. Zhu A, Ibrahim JG, Love MI (2019). Heavy-tailed prior distributions for sequence count data: removing the noise and preserving large differences. *Bioinformatics* 35(12):2084-2092. doi: 10.1093/bioinformatics/bty895
+
+3. Aran D, Hu Z, Butte AJ (2017). xCell: digitally portraying the tissue cellular heterogeneity landscape. *Genome Biology* 18:220. doi: 10.1186/s13059-017-1349-1
+
+4. Wu T, Hu E, Xu S, et al. (2021). clusterProfiler 4.0: A universal enrichment tool for interpreting omics data. *The Innovation* 2(3):100141. doi: 10.1016/j.xinn.2021.100141
+
+5. Liberzon A, Birger C, Thorvaldsdóttir H, et al. (2015). The Molecular Signatures Database Hallmark Gene Set Collection. *Cell Systems* 1(6):417-425. doi: 10.1016/j.cels.2015.12.004
 
 ## Contact
 
-📬 For questions or issues:
-
-**Email:** bioinfosourabh@gmail.com
-
+**Author:** Sourabh Sharma  
+**Email:** bioinfosourabh@gmail.com  
 **Website:** [bioinfosourabh.netlify.app](https://bioinfosourabh.netlify.app)
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
