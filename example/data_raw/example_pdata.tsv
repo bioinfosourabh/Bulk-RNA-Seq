@@ -1,0 +1,19 @@
+title	geo_accession	source_name_ch1	response:ch1	er status:ch1	pr status:ch1	her2 status:ch1
+Patient_01	SIM0001	breast tumour biopsy (simulated)	No pCR	negative	negative	negative
+Patient_02	SIM0002	breast tumour biopsy (simulated)	pCR	positive	positive	negative
+Patient_03	SIM0003	breast tumour biopsy (simulated)	No pCR	positive	positive	negative
+Patient_04	SIM0004	breast tumour biopsy (simulated)	pCR	negative	negative	positive
+Patient_05	SIM0005	breast tumour biopsy (simulated)	pCR	positive	negative	positive
+Patient_06	SIM0006	breast tumour biopsy (simulated)	No pCR	positive	negative	negative
+Patient_07	SIM0007	breast tumour biopsy (simulated)	No pCR	negative	negative	positive
+Patient_08	SIM0008	breast tumour biopsy (simulated)	No pCR	positive	positive	negative
+Patient_09	SIM0009	breast tumour biopsy (simulated)	pCR	negative	negative	negative
+Patient_10	SIM0010	breast tumour biopsy (simulated)	pCR	positive	positive	negative
+Patient_11	SIM0011	breast tumour biopsy (simulated)	No pCR	positive	negative	negative
+Patient_12	SIM0012	breast tumour biopsy (simulated)	No pCR	positive	negative	negative
+Patient_13	SIM0013	breast tumour biopsy (simulated)	NA	positive	positive	positive
+Patient_14	SIM0014	breast tumour biopsy (simulated)	pCR	positive	positive	negative
+Patient_15	SIM0015	breast tumour biopsy (simulated)	No pCR	negative	negative	positive
+Patient_16	SIM0016	breast tumour biopsy (simulated)	pCR	negative	negative	negative
+Patient_17	SIM0017	breast tumour biopsy (simulated)	No pCR	positive	negative	negative
+Patient_18	SIM0018	breast tumour biopsy (simulated)	No pCR	positive	negative	negative

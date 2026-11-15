@@ -1,0 +1,90 @@
+# Configuration for the simulated example run (used by CI).
+# Identical to ../config.yaml except for the paths, the title and the input
+# files. The data are simulated (see example/simulate_example_data.R).
+#   Rscript run_pipeline.R --config example/config.yaml
+
+project: "Simulated example"
+title: "Simulated example data (not GSE192341)"
+seed: 42
+
+paths:
+  data_raw: "example/data_raw"
+  data: "example/data"
+  results: "example/results"
+
+# ---- 00. Download (scripts/00_download_data.R) -------------------------------
+geo:
+  accession: "GSE192341"
+  # Regular expression used to pick the processed count matrix among the GEO
+  # supplementary files.
+  processed_file_regex: "processed|count"
+
+# ---- 00A / 00B. Inputs -------------------------------------------------------
+input:
+  # Processed matrix: first column gene identifier, optional second column gene
+  # symbol, remaining numeric columns one per sample (plain text or .gz).
+  processed_matrix: "example/data_raw/example_processed_data.txt.gz"
+  # Sample annotation exported from the GEO series matrix by 00_download_data.R.
+  pdata: "example/data_raw/example_pdata.tsv"
+
+metadata:
+  # Column of the GEO annotation holding the pCR status. null = auto-detect
+  # (first ':ch1' column whose name contains 'pcr' or 'response').
+  response_column: null
+  # Values (case-insensitive, exact match) mapped to each group. Anything not
+  # listed is treated as missing and the sample is excluded from the analysis.
+  pcr_values: ["pcr", "yes", "1", "complete response", "pathological complete response"]
+  no_pcr_values: ["no pcr", "no_pcr", "nopcr", "non-pcr", "no", "0", "rd", "residual disease"]
+  # Additional clinical columns carried into coldata when present (regex on
+  # the ':ch1' column names).
+  extra_columns:
+    er_status: "^er"
+    pr_status: "^pr"
+    her2_status: "her2"
+
+# ---- 01 / 02. Filtering and differential expression -------------------------
+design:
+  condition_column: "condition"
+  reference: "No_pCR"
+  treatment: "pCR"
+  formula: "~ condition"   # the condition must be the last term
+
+filtering:
+  min_count: 10
+  # Minimum number of samples with >= min_count reads. "smallest_group" uses
+  # the size of the smallest condition group, as suggested in the DESeq2
+  # vignette; an integer can be given instead.
+  min_samples: "smallest_group"
+
+deseq2:
+  alpha: 0.05
+  shrinkage: "apeglm"
+
+# ---- 03. QC ----------------------------------------------------------------
+qc:
+  n_top_variable: 500
+  outlier_z: 3
+
+# ---- 04. xCell ---------------------------------------------------------------
+xcell:
+  run: true
+  parallel_sz: 1
+
+# ---- 05. Enrichment ----------------------------------------------------------
+enrichment:
+  padj_cutoff: 0.05      # DE genes used for ORA
+  lfc_cutoff: 0          # |shrunken log2FC| threshold for ORA gene lists
+  gsea_rank_by: "stat"   # "stat" (Wald statistic) or "log2FoldChange"
+  databases: ["hallmark", "go_bp", "reactome"]
+  min_gs_size: 10
+  max_gs_size: 500
+  ora_pvalue_cutoff: 0.05
+  ora_qvalue_cutoff: 0.2
+  gsea_pvalue_cutoff: 0.05
+  # Optional path to a Hallmark GMT file (Entrez IDs). If null, gene sets are
+  # retrieved with msigdbr.
+  hallmark_gmt: null
+
+# ---- 07. Figures -------------------------------------------------------------
+figures:
+  dpi: 300

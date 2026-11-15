@@ -1,0 +1,117 @@
+---
+title: "`r params$title`"
+subtitle: "Bulk RNA-seq analysis report"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_float: false
+    number_sections: true
+    self_contained: true
+params:
+  title: "Bulk RNA-seq analysis"
+  results_dir: "results"
+  config_file: "config.yaml"
+  reference: "No_pCR"
+  treatment: "pCR"
+  alpha: 0.05
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+tab <- function(f) file.path(params$results_dir, "tables", f)
+fig <- function(f) file.path(params$results_dir, "figures", "png", paste0(f, ".png"))
+rd <- function(f) utils::read.delim(tab(f), check.names = FALSE, quote = "",
+                                    comment.char = "", stringsAsFactors = FALSE)
+show_fig <- function(f) if (file.exists(fig(f))) knitr::include_graphics(fig(f), rel_path = FALSE) else
+  cat("_Figure not available:", f, "_\n")
+lab <- function(x) gsub("_", " ", x)
+```
+
+Configuration: `r params$config_file`. Contrast: **`r lab(params$treatment)` vs `r lab(params$reference)`**
+(positive log2 fold change = higher in `r lab(params$treatment)`).
+
+# Samples and filtering
+
+```{r}
+qc <- rd("sample_qc_metrics.tsv")
+filt <- rd("gene_filtering_summary.tsv")
+knitr::kable(as.data.frame(table(Condition = lab(qc$condition))), caption = "Samples per group")
+knitr::kable(filt, caption = "Gene filter (>= min_count reads in >= min_samples samples)")
+```
+
+```{r, out.width = "90%"}
+show_fig("Fig01_Sample_QC")
+```
+
+# Sample-level QC
+
+```{r}
+out <- rd("qc_outlier_flags.tsv")
+n_out <- sum(out$outlier_flag)
+```
+
+`r n_out` sample(s) flagged as potential outliers (|z| of mean VST distance above threshold).
+Flagged samples are retained in the analysis.
+
+```{r, out.width = "90%"}
+show_fig("Fig02_PCA")
+show_fig("Fig03A_Sample_Distance")
+```
+
+# Differential expression
+
+```{r}
+res <- rd("DESeq2_results_all.tsv")
+sig <- res[!is.na(res$padj) & res$padj < params$alpha, ]
+knitr::kable(data.frame(
+  `Genes tested` = nrow(res),
+  `padj < alpha` = nrow(sig),
+  `Higher in treatment` = sum(sig$log2FoldChange > 0),
+  `Lower in treatment` = sum(sig$log2FoldChange < 0), check.names = FALSE),
+  caption = sprintf("DESeq2 Wald test, BH-adjusted p < %.2g; log2FC shrunk with apeglm", params$alpha))
+top <- head(res[, c("symbol", "gene_id", "baseMean", "log2FoldChange", "log2FoldChange_MLE", "padj")], 20)
+knitr::kable(top, digits = 3, caption = "Top 20 genes by adjusted p-value")
+```
+
+```{r, out.width = "80%"}
+show_fig("Fig04_Volcano")
+show_fig("Fig05_MA_Plot")
+show_fig("Fig07_Top_DE_Heatmap")
+```
+
+# Cell-type enrichment (xCell)
+
+```{r, results = "asis"}
+if (file.exists(tab("deconvolution_xcell_pcr_vs_nopcr.tsv"))) {
+  xs <- rd("deconvolution_xcell_pcr_vs_nopcr.tsv")
+  print(knitr::kable(head(xs, 15), digits = 3,
+                     caption = "Wilcoxon rank-sum test per cell type (BH-adjusted)"))
+} else cat("xCell was not run.\n")
+```
+
+```{r, out.width = "80%"}
+show_fig("Fig09C_Significant_CellTypes")
+```
+
+# Pathway enrichment
+
+```{r}
+if (file.exists(tab("enrichment_summary.tsv"))) {
+  knitr::kable(rd("enrichment_summary.tsv"), caption = "Number of significant terms per analysis")
+}
+```
+
+```{r, out.width = "80%"}
+show_fig("Fig10E_GSEA_Hallmark")
+show_fig("Fig10A_Hallmark_UP")
+show_fig("Fig10B_Hallmark_DOWN")
+```
+
+# Software
+
+Per-step `sessionInfo()` output is written to `results/logs/`.
+
+```{r}
+cat(paste(utils::capture.output(utils::sessionInfo()), collapse = "\n"))
+```
