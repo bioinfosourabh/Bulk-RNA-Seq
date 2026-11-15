@@ -1,6 +1,6 @@
 # Bulk RNA-Seq Analysis Pipeline: DESeq2, xCell, and Pathway Enrichment
 
-A comprehensive bulk RNA-seq differential expression analysis pipeline implementing DESeq2 for statistical modeling, xCell for cellular deconvolution, and multiple pathway enrichment approaches. This workflow analyzes breast cancer neoadjuvant chemotherapy response data (GSE192341).
+A bulk RNA-seq differential expression analysis pipeline implementing DESeq2 for statistical modeling, xCell for cellular deconvolution, and multiple pathway enrichment approaches. This workflow analyzes breast cancer neoadjuvant chemotherapy response data (GSE192341).
 
 ## Overview
 
@@ -12,7 +12,7 @@ This repository provides a reproducible analysis pipeline covering:
 5. Quality Control: Variance-stabilizing transformation, PCA, and distance-based outlier detection
 6. Cellular Deconvolution: xCell-based estimation of immune and stromal cell enrichment
 7. Pathway Enrichment: ORA and GSEA using Hallmark, GO, and Reactome databases
-8. Data Visualization: Comprehensive figure generation for all analysis steps
+8. Data Visualization: Figures for each analysis step
 
 ## Dataset
 
@@ -25,8 +25,6 @@ This repository provides a reproducible analysis pipeline covering:
 ```
 Bulk-RNA-Seq/
 ├── README.md
-├── LICENSE
-├── .gitignore
 ├── scripts/
 │   ├── 00A_make_counts_from_processed_matrix.R
 │   ├── 00B_make_coldata_from_GEO.R
@@ -48,6 +46,8 @@ Bulk-RNA-Seq/
 │   └── rds/
 └── Visualizations/
 ```
+
+The analysis code for each step is given in full in the sections below. The `scripts/`, `data/` and `results/` folders in this repository currently contain only placeholders; the layout above shows where the code expects inputs and writes outputs. The GEO processed matrix (`GSE192341_processed_data.txt`) can be downloaded from the GEO accession page linked above. Figures shown in this README are in [`Visualizations/`](Visualizations).
 
 ## Software Requirements
 
@@ -1544,7 +1544,7 @@ All figures are generated in both PNG (300 DPI) and PDF (vector) formats:
 
 ## Complete Pipeline Execution
 
-Run the entire analysis sequentially:
+Run the entire analysis sequentially. The commands assume the code from each section above has been saved as the corresponding file in `scripts/`:
 ```bash
 # Step 0: Data preparation
 Rscript scripts/00A_make_counts_from_processed_matrix.R
@@ -1579,12 +1579,10 @@ Rscript scripts/07_visualizations.R
 
 5. Liberzon A, Birger C, Thorvaldsdóttir H, et al. (2015). The Molecular Signatures Database Hallmark Gene Set Collection. *Cell Systems* 1(6):417-425. doi: 10.1016/j.cels.2015.12.004
 
-## Contact
+## Author
 
-**Author:** Sourabh Sharma  
-**Email:** bioinfosourabh@gmail.com  
-**Website:** [bioinfosourabh.netlify.app](https://bioinfosourabh.netlify.app)
+Sourabh Kumar · [bioinfosourabh@gmail.com](mailto:bioinfosourabh@gmail.com) · [bioinfosourabh.netlify.app](https://bioinfosourabh.netlify.app) · ORCID [0009-0009-5840-9830](https://orcid.org/0009-0009-5840-9830)
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License.
